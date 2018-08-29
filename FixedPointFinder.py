@@ -25,7 +25,7 @@ from AdaptiveGradNormClip import AdaptiveGradNormClip
 class FixedPointFinder(object):
 
     def __init__(self, rnn_cell, sess, initial_states, inputs,
-                 tol=1e-10, max_iters=5000, method='joint',
+                 tol=1e-20, max_iters=5000, method='joint',
                  tol_unique=1e-5, do_compute_jacobians=True, verbose=False,
                  alr_hps=dict(), agnc_hps=dict(), adam_hps={'epsilon': 0.01}):
         '''Creates a FixedPointFinder object.

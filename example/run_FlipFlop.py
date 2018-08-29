@@ -32,7 +32,9 @@ data_hps = {
     'p_flip': 0.2,
     }
 
-# Hyperparameters for training the RNN (flipflop)
+# Hyperparameters for AdaptiveLearningRate
+alr_hps = {'initial_rate': 0.05}
+
 hps = {
     'rnn_type': 'gru',
     'n_hidden': 24,
@@ -45,7 +47,8 @@ hps = {
     'n_epochs_per_ckpt': 100,
     'n_epochs_per_visualization_update': 25,
     'n_trials_plot': 4,
-    'data_hps': data_hps
+    'data_hps': data_hps,
+    'alr_hps': alr_hps
     }
 
 ff = FlipFlop(**hps)
@@ -67,9 +70,7 @@ N_INITS = 256 # The number of initial states to provide
 inputs = np.zeros([1,data_hps['n_bits']])
 
 # Fixed point finder hyperparameters
-fpf_hps = {'tol': 1e-20,
-           'do_compute_jacobians': False,
-           'method': 'joint'}
+fpf_hps = {}
 
 # Get initial states from realistic runs of the network
 example_trials = ff.generate_flipflop_trials()

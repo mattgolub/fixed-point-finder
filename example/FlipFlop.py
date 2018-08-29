@@ -21,7 +21,7 @@ import os
 import shutil
 import ntpath # filesystem support for windows and linux
 
-PATH_TO_RECURRENT_WHISPERER = '../../RecurrentWhisperer/'
+PATH_TO_RECURRENT_WHISPERER = '../../recurrent-whisperer/'
 sys.path.insert(0, PATH_TO_RECURRENT_WHISPERER)
 from RecurrentWhisperer import RecurrentWhisperer
 
