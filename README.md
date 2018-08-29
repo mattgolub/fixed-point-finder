@@ -10,3 +10,7 @@ The code is written in Python 2.7.6. You will also need:
 * **TensorFlow** version 1.10 ([install](https://www.tensorflow.org/install/))
 * **NumPy, SciPy, Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains all of them)
 * **RecurrentWhisperer** ([install](https://github.com/mattgolub/recurrent-whisperer/))
+
+## Getting started
+
+Check out ./example/run_FlipFlop.py. This is an end-to-end example that 1) trains an RNN to solve the flip-flop task, 2) finds the fixed points of the trained RNN, and 3) visualizes and analyzes the fixed points identified.
