@@ -24,7 +24,11 @@ from FlipFlop import FlipFlop
 # STEP 1: Train an RNN to solve the N-bit memory task *************************
 # *****************************************************************************
 
+# Hyperparameters for AdaptiveLearningRate
+alr_hps = {'initial_rate': 0.05}
+
 # Hyperparameters for generating synthetic data
+# See FlipFlop.py for detailed descriptions.
 data_hps = {
     'n_batch':  128,
     'n_time': 256,
@@ -32,9 +36,8 @@ data_hps = {
     'p_flip': 0.2,
     }
 
-# Hyperparameters for AdaptiveLearningRate
-alr_hps = {'initial_rate': 0.05}
-
+# Hyperparameters for FlipFlop
+# See FlipFlop.py for detailed descriptions.
 hps = {
     'rnn_type': 'gru',
     'n_hidden': 24,
@@ -64,12 +67,15 @@ from FixedPointFinder import FixedPointFinder
 
 ''' Initial states are sampled from states observed during realistic behavior of the network. Because a well-trained network transitions instantaneously from one stable state to another, observed networks states are never near the unstable fixed points. In order to identify ALL fixed points, noise must be added to the initial states before handing them to the fixed point finder.'''
 NOISE_SCALE = 0.5 # Standard deviation of noise added to initial states
+
 N_INITS = 256 # The number of initial states to provide
 
 # Study the system in the absense of input pulses (e.g., all inputs are 0)
 inputs = np.zeros([1,data_hps['n_bits']])
 
 # Fixed point finder hyperparameters
+# See FixedPointFinder.py for detailed descriptions of available
+# hyperparameters.
 fpf_hps = {}
 
 # Get initial states from realistic runs of the network
@@ -82,7 +88,7 @@ for init_idx in range(N_INITS):
     time_idx = npr.randint(data_hps['n_time'])
     initial_states[init_idx,:] = example_predictions['hidden'][trial_idx,time_idx,:]
 
-# Add some noise to the network states
+# Add noise to the network states
 initial_states += NOISE_SCALE * npr.randn(N_INITS, hps['n_hidden'])
 
 # Tensorflow doesn't make it easy to access LSTM cell states. If RNN is an LSTM, initialize cell states to be zeros for the purposes of fixed point finding, recognizing that this might have negative effects on the fixed point finding (since the initial states might not be perfectly representative of realistic network operation).
@@ -96,10 +102,10 @@ fpf = FixedPointFinder(ff.rnn_cell, ff.session,
                        initial_states, inputs, **fpf_hps)
 fp_dict = fpf.find_fixed_points()
 
-# Visualize some example trials
+# Visualize example trials
 ff.plot_trials(example_trials)
 
-# Visualize the fixed points
+# Visualize identified fixed points
 fpf.plot_summary()
 
 print('Entering debug mode to allow interaction with objects and figures.')

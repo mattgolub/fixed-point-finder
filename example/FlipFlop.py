@@ -29,6 +29,8 @@ from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 from Hyperparameters import Hyperparameters
 
+# FULL COMMENTS COMING SOON.
+
 class FlipFlop(RecurrentWhisperer):
     ''' Class for training an RNN to implement an N-bit memory, a.k.a. "the
     flip-flop  task" as described in Sussillo & Barak, Neural Computation,
@@ -134,7 +136,8 @@ class FlipFlop(RecurrentWhisperer):
         self.loss = tf.reduce_mean(tf.squared_difference(self.output_bxtxd, self.pred_output_bxtxd))
 
     def _setup_saver(self):
-        self.saver = tf.train.Saver(tf.global_variables(), max_to_keep=self.hps.max_ckpt_to_keep)
+        self.saver = tf.train.Saver(tf.global_variables(),
+                                    max_to_keep=self.hps.max_ckpt_to_keep)
 
     def _setup_training(self, train_data, valid_data):
         pass
