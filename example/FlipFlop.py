@@ -71,38 +71,23 @@ class FlipFlop(RecurrentWhisperer):
         Returns:
             A dict of hyperparameters.
         '''
-
         return {
             'rnn_type': 'vanilla', # 'vanilla', 'gru' or 'lstm'
-            'n_hidden': 32,
-            'random_seed': 0,
+            'n_hidden': 24,
             'data_hps':
-                {'n_batch':  512,
+                {'n_batch':  128,
                 'n_time': 256,
                 'n_bits': 3,
-                'p_flip': 0.25},
-            'adam_hps': {'epsilon': 0.01}, # Passed to AdamOptimizer
-            'alr_hps': dict(), # Passed to AdaptiveLearningRate
-            'agnc_hps': dict()} # Passed to AdaptiveGradientNormClip
+                'p_flip': 0.2},
+            }
 
     @staticmethod
     def _default_non_hash_hyperparameters():
         # These do not affect the optimization
         return {
-            'min_loss': 0.,
-            'max_n_epochs': 1000,
-            'min_learning_rate': 1e-10,
             'log_dir': '/tmp/flipflop_logs/',
-            'do_restart_run': False,
-            'max_ckpt_to_keep': 1,
-            'max_lvl_ckpt_to_keep': 1,
-            'n_epochs_per_ckpt': 100,
             'n_epochs_per_validation_update': -1,
-            'n_epochs_per_visualization_update': 100,
             'n_trials_plot': 4,
-            'disable_gpus': False,
-            'allow_gpu_growth': True,
-            'per_process_gpu_memory_fraction': None
             }
 
     def _setup_model(self):

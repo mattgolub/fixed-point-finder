@@ -27,30 +27,14 @@ from FlipFlop import FlipFlop
 # Hyperparameters for AdaptiveLearningRate
 alr_hps = {'initial_rate': 0.05}
 
-# Hyperparameters for generating synthetic data
-# See FlipFlop.py for detailed descriptions.
-data_hps = {
-    'n_batch':  128,
-    'n_time': 256,
-    'n_bits': 3,
-    'p_flip': 0.2,
-    }
-
 # Hyperparameters for FlipFlop
 # See FlipFlop.py for detailed descriptions.
 hps = {
     'rnn_type': 'gru',
     'n_hidden': 24,
-    'do_restart_run': False,
     'min_loss': 1e-3,
-    'max_n_epochs': 1000,
     'min_learning_rate': 1e-5,
     'log_dir': './logs/',
-    'max_ckpt_to_keep': 1,
-    'n_epochs_per_ckpt': 100,
-    'n_epochs_per_visualization_update': 25,
-    'n_trials_plot': 4,
-    'data_hps': data_hps,
     'alr_hps': alr_hps
     }
 
@@ -71,7 +55,8 @@ NOISE_SCALE = 0.5 # Standard deviation of noise added to initial states
 N_INITS = 256 # The number of initial states to provide
 
 # Study the system in the absense of input pulses (e.g., all inputs are 0)
-inputs = np.zeros([1,data_hps['n_bits']])
+n_bits = ff.hps.data_hps['n_bits']
+inputs = np.zeros([1,n_bits])
 
 # Fixed point finder hyperparameters
 # See FixedPointFinder.py for detailed descriptions of available
@@ -84,8 +69,8 @@ example_predictions = ff.predict(example_trials)
 
 initial_states = np.zeros([N_INITS, hps['n_hidden']])
 for init_idx in range(N_INITS):
-    trial_idx = npr.randint(data_hps['n_batch'])
-    time_idx = npr.randint(data_hps['n_time'])
+    trial_idx = npr.randint(ff.hps.data_hps['n_batch'])
+    time_idx = npr.randint(ff.hps.data_hps['n_time'])
     initial_states[init_idx,:] = example_predictions['hidden'][trial_idx,time_idx,:]
 
 # Add noise to the network states
