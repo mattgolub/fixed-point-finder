@@ -48,12 +48,18 @@ class FlipFlop(RecurrentWhisperer):
         generate_flipflop_trials(...).
 
     Usage:
-        This class trains an RNN to reproduce the correct outputs given the
+        This class trains an RNN to generate the correct outputs given the
         inputs of the flip-flop task. All that is needed to get started is to
-        construct a flipflop object and to call .train on that object.
+        construct a flipflop object and to call .train on that object:
+
+        hps = {...} # dictionary of hyperparameter key/value pairs
+        ff = FlipFlop(**hps)
+        ff.train()
+
     '''
 
-    def _default_hash_hyperparameters(self):
+    @staticmethod
+    def _default_hash_hyperparameters():
         '''Defines default hyperparameters for the set of hyperparameters that
         are hashed to define a directory structure for easily managing
         multiple runs of the RNN training (i.e., using different
@@ -79,7 +85,8 @@ class FlipFlop(RecurrentWhisperer):
             'alr_hps': dict(), # Passed to AdaptiveLearningRate
             'agnc_hps': dict()} # Passed to AdaptiveGradientNormClip
 
-    def _default_non_hash_hyperparameters(self):
+    @staticmethod
+    def _default_non_hash_hyperparameters():
         # These do not affect the optimization
         return {
             'min_loss': 0.,
@@ -88,12 +95,14 @@ class FlipFlop(RecurrentWhisperer):
             'log_dir': '/tmp/flipflop_logs/',
             'do_restart_run': False,
             'max_ckpt_to_keep': 1,
-            'max_lve_ckpt_to_keep': 1,
+            'max_lvl_ckpt_to_keep': 1,
             'n_epochs_per_ckpt': 100,
             'n_epochs_per_validation_update': -1,
             'n_epochs_per_visualization_update': 100,
             'n_trials_plot': 4,
-            'disable_gpus': False
+            'disable_gpus': False,
+            'allow_gpu_growth': True,
+            'per_process_gpu_memory_fraction': None
             }
 
     def _setup_model(self):
