@@ -60,10 +60,7 @@ class FlipFlop(RecurrentWhisperer):
 
     @staticmethod
     def _default_hash_hyperparameters():
-        '''Defines default hyperparameters for the set of hyperparameters that
-        are hashed to define a directory structure for easily managing
-        multiple runs of the RNN training (i.e., using different
-        hyperparameter settings).
+        '''Defines default hyperparameters, specific to FlipFlop, for the set of hyperparameters that are hashed to define a directory structure for easily managing multiple runs of the RNN training (i.e., using different hyperparameter settings).
 
         Args:
             None.
