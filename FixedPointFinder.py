@@ -56,7 +56,7 @@ class FixedPointFinder(object):
             whether to find each fixed point individually, or to optimize them
             all jointly. Further testing is required to understand pros and
             cons. Empirically, 'joint' runs faster (potentially making better
-            use of GPUs, fewing python for loops), but may be susceptible to
+            use of GPUs, fewer python for loops), but may be susceptible to
             pathological conditions.
 
             tol_unique (optional): A positive scalar specifying the numerical
@@ -142,10 +142,10 @@ class FixedPointFinder(object):
             'joint' or 'sequential', but was %s.
 
         After running, the following class variables contain results of the
-        fixed point finding. The gerneral procedure is to (1) run the fixed
+        fixed point finding. The general procedure is to (1) run the fixed
         point optimization initialized at each provided initial state, (2)
         identify the unique fixed points, (3) further refine the set of unique
-        fixed points by checking for pathalogial conditions and running
+        fixed points by checking for pathological conditions and running
         additional optimization iterations as needed, and (4) find the
         Jacobian of the RNN state transition function at the unique fixed
         points.
@@ -154,7 +154,7 @@ class FixedPointFinder(object):
         from step 1) above, the optimization from all of the initial_states
         provided to __init__. Descriptions of the data contained in each of
         these variables are provided below. For each variable, the first
-        dimension indexes the initialization, e.g., xstar[i, :] correspondes to
+        dimension indexes the initialization, e.g., xstar[i, :] corresponds to
         initial_states[i, :]. Each of these variables has .shape[0] =
         initial_states.shape[0].
 
@@ -263,8 +263,8 @@ class FixedPointFinder(object):
         optimization.
 
         mean: This should make progress on many of the states at each step,
-        which likely speeds things up. However, one could imagine pathalogical
-        situations arrising where the objective continues to improve due to
+        which likely speeds things up. However, one could imagine pathological
+        situations arising where the objective continues to improve due to
         improvements in some fixed points but not others.'''
 
         q = tf.reduce_mean(q_1xn)
@@ -376,7 +376,7 @@ class FixedPointFinder(object):
             x: An [n_inits x n_dims] tf.Variable (the optimization variable)
             representing RNN states, initialized to the values in
             initial_states. If the RNN is an LSTM, n_dims represents the
-            concatentated hidden and cell states.
+            concatenated hidden and cell states.
 
             F: An [n_inits x n_dims] tf op representing the state transition
             function of the RNN applied to x.
@@ -428,7 +428,7 @@ class FixedPointFinder(object):
             x: An [n_inits x n_dims] tf.Variable (the optimization variable)
             representing RNN states, initialized to the values in
             initial_states. If the RNN is an LSTM, n_dims represents the
-            concatentated hidden and cell states.
+            concatenated hidden and cell states.
 
             F: An [n_inits x n_dims] tf op representing the state transition
             function of the RNN applied to x.
@@ -500,7 +500,7 @@ class FixedPointFinder(object):
             learning_rate=learning_rate, **self.adam_optimizer_hps)
         train = optimizer.apply_gradients(zip(grads_to_apply, [x]))
 
-        # Initialize x and AdamOptimizer's auxilliary variables
+        # Initialize x and AdamOptimizer's auxiliary variables
         # (very careful not to reinitialize RNN parameters)
         uninitialized_vars = optimizer.variables()
         init = tf.variables_initializer(var_list=uninitialized_vars)
@@ -788,7 +788,7 @@ class FixedPointFinder(object):
             hidden and cell states.
 
         Returns:
-            An LSTMStateTuple containing the de-concatentated hidden and cell
+            An LSTMStateTuple containing the de-concatenated hidden and cell
             states from x. Resultant .c and .h are each [n_batch , n_dims/2]
             numpy or tf objects (type is preserved from x).
         '''
@@ -817,7 +817,7 @@ class FixedPointFinder(object):
         return tf.is_numeric_tensor(x) or isinstance(x, tf.Variable)
 
     # ******************************************************************
-    # Previous jacobian implementations, now obsolete w/ TF 1.10 *******
+    # Previous Jacobian implementations, now obsolete w/ TF 1.10 *******
     # ***** Can be re-integrated by users who require using earlier ****
     # ***** versions of TensorFlow *************************************
     # ******************************************************************
@@ -830,7 +830,7 @@ class FixedPointFinder(object):
 
         Args:
             state_np: A [1 x n_dims] numpy array representing the point at
-            which to compute the jacobian.
+            which to compute the Jacobian.
 
         Returns:
             An [n_dims x n_dims] numpy array containing the Jacobian of the
@@ -846,13 +846,13 @@ class FixedPointFinder(object):
         '''Computes the Jacobian of the RNN state transition function at a
         single point.
 
-        Uses TF implementaion of Jacobian computation, and is somewhat faster
+        Uses TF implementation of Jacobian computation, and is somewhat faster
         than _compute_single_jacobian_np_old (about 50% faster on small toy
         problems).
 
         Args:
             state_np: A [1 x n_dims] numpy array representing the point at
-            which to compute the jacobian.
+            which to compute the Jacobian.
 
         Returns:
             An [n_dims x n_dims] numpy array containing the Jacobian of the
@@ -930,7 +930,7 @@ class FixedPointFinder(object):
         2) Create new tf.Variables x_i and corresponding new F_xi. Then send
         to _compute_single_jacobian_tf.
             Advantage, better code reuse and readability.
-            Disadvantage: considerable backend overhead (adding additional
+            Disadvantage: considerable back-end overhead (adding additional
             (x,F) elements to the graph).
 
         Here is approach 1.'''
