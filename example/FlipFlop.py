@@ -55,12 +55,15 @@ class FlipFlop(RecurrentWhisperer):
         hps = {...} # dictionary of hyperparameter key/value pairs
         ff = FlipFlop(**hps)
         ff.train()
-
     '''
 
     @staticmethod
     def _default_hash_hyperparameters():
-        '''Defines default hyperparameters, specific to FlipFlop, for the set of hyperparameters that are hashed to define a directory structure for easily managing multiple runs of the RNN training (i.e., using different hyperparameter settings).
+        '''Defines default hyperparameters, specific to FlipFlop, for the set
+        of hyperparameters that are hashed to define a directory structure for
+        easily managing multiple runs of the RNN training (i.e., using
+        different hyperparameter settings). Additional default hyperparameters
+        are defined in RecurrentWhisperer (from which FlipFlop inherits).
 
         Args:
             None.
@@ -80,16 +83,28 @@ class FlipFlop(RecurrentWhisperer):
 
     @staticmethod
     def _default_non_hash_hyperparameters():
-        # These do not affect the optimization
+        '''Defines default hyperparameters, specific to FlipFlop, for the set
+        of hyperparameters that are NOT hashed. Additional default
+        hyperparameters are defined in RecurrentWhisperer (from which FlipFlop
+        inherits).
+
+        Args:
+            None.
+
+        Returns:
+            A dict of hyperparameters.
+        '''
         return {
             'log_dir': '/tmp/flipflop_logs/',
-            'n_epochs_per_validation_update': -1,
+            'n_epochs_per_validation_update': -1, #overrides RecurrentWhisperer
             'n_trials_plot': 4,
             }
 
     def _setup_model(self):
-        # Make sure not to put anything in here that would create the run_dir
-        # If you decide to change this (e.g., put the saver in here), make sure to adjust the order of operations in __init__ accordingly
+        '''Defines an RNN in Tensorflow.
+
+        See docstring in RecurrentWhisperer.
+        '''
 
         hps = self.hps
         n_hidden = hps.n_hidden
@@ -127,27 +142,26 @@ class FlipFlop(RecurrentWhisperer):
         self.loss = tf.reduce_mean(tf.squared_difference(self.output_bxtxd, self.pred_output_bxtxd))
 
     def _setup_saver(self):
+        '''See docstring in RecurrentWhisperer.'''
+
         self.saver = tf.train.Saver(tf.global_variables(),
                                     max_to_keep=self.hps.max_ckpt_to_keep)
 
     def _setup_training(self, train_data, valid_data):
+        '''Does nothing. Required by RecurrentWhisperer.'''
         pass
 
     def _train_batch(self, batch_data):
+        '''See docstring in RecurrentWhisperer.'''
 
-        def build_train_feed_dict(batch_data):
-
-            feed_dict = dict()
-            feed_dict[self.inputs_bxtxd] = batch_data['inputs']
-            feed_dict[self.output_bxtxd] = batch_data['output']
-            feed_dict[self.learning_rate] = self.adaptive_learning_rate()
-            feed_dict[self.grad_norm_clip_val] = self.adaptive_grad_norm_clip()
-
-            return feed_dict
 
         ops_to_eval = [self.train_op, self.grad_global_norm, self.loss, self.merged_opt_summaries]
 
-        feed_dict = build_train_feed_dict(batch_data)
+        feed_dict = dict()
+        feed_dict[self.inputs_bxtxd] = batch_data['inputs']
+        feed_dict[self.output_bxtxd] = batch_data['output']
+        feed_dict[self.learning_rate] = self.adaptive_learning_rate()
+        feed_dict[self.grad_norm_clip_val] = self.adaptive_grad_norm_clip()
 
         [ev_train_op, ev_grad_global_norm, ev_loss, ev_merged_opt_summaries] = self.session.run(ops_to_eval, feed_dict=feed_dict)
 
@@ -158,6 +172,8 @@ class FlipFlop(RecurrentWhisperer):
         return summary
 
     def predict(self, batch_data):
+        '''See docstring in RecurrentWhisperer.'''
+
         ops_to_eval = [self.hidden_bxtxd, self.pred_output_bxtxd]
         feed_dict = {self.inputs_bxtxd: batch_data['inputs']}
         ev_hidden_bxtxd, ev_pred_output_bxtxd = self.session.run(ops_to_eval, feed_dict=feed_dict)
@@ -167,13 +183,26 @@ class FlipFlop(RecurrentWhisperer):
         return predictions
 
     def _get_data_batches(self, train_data):
+        '''See docstring in RecurrentWhisperer.'''
         return [self.generate_flipflop_trials()]
 
     def _get_batch_size(self, batch_data):
-        # batch data is a data dict
+        '''See docstring in RecurrentWhisperer.'''
         return batch_data['inputs'].shape[0]
 
     def generate_flipflop_trials(self):
+        '''Generates synthetic data (i.e., ground truth trials) for the FlipFlop task. See comments following FlipFlop class definition for a description of the input-output relationship in the task.
+
+        Args:
+            None.
+
+        Returns:
+            dict containing 'inputs' and 'outputs'.
+
+                'inputs': [n_batch x n_time x n_bits] numpy array containing input pulses.
+
+                'outputs': [n_batch x n_time x n_bits] numpy array specifying the correct behavior of the FlipFlop memory device.
+        '''
 
         data_hps = self.hps.data_hps
         n_batch = data_hps['n_batch']
@@ -212,14 +241,23 @@ class FlipFlop(RecurrentWhisperer):
         return {'inputs': inputs, 'output': output}
 
     def _setup_visualization(self):
+        '''See docstring in RecurrentWhisperer.'''
         self.fig = plt.figure()
 
     def _update_visualization(self, train_data = None, valid_data = None):
+        '''See docstring in RecurrentWhisperer.'''
         data = self.generate_flipflop_trials()
         self.plot_trials(data)
 
     def plot_trials(self, data):
+        '''Plots example trials, complete with input pulses, correct outputs, and RNN-predicted outputs.
 
+        Args:
+            data: dict as returned by generate_flipflop_trials.
+
+        Returns:
+            None.
+        '''
         fig = plt.figure(self.fig.number)
         plt.clf()
 
