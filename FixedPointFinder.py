@@ -1,8 +1,8 @@
 '''
 TensorFlow FixedPointFinder
-Version 1.1
+Version 1.1.1
 Written using Python 2.7.12 and TensorFlow 1.10.
-@ Matt Golub, August 2018.
+@ Matt Golub, September 2018.
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
@@ -25,9 +25,17 @@ from AdaptiveGradNormClip import AdaptiveGradNormClip
 class FixedPointFinder(object):
 
     def __init__(self, rnn_cell, sess, initial_states, inputs,
-                 tol=1e-20, max_iters=5000, method='joint',
-                 tol_unique=1e-5, do_compute_jacobians=True, verbose=False,
-                 alr_hps=dict(), agnc_hps=dict(), adam_hps={'epsilon': 0.01}):
+        tol=1e-20,
+        max_iters=5000,
+        method='joint',
+        do_rerun_outliers=True,
+        outlier_q_scale=1000,
+        tol_unique=1e-5,
+        do_compute_jacobians=True,
+        verbose=False,
+        alr_hps=dict(),
+        agnc_hps=dict(),
+adam_hps={'epsilon': 0.01}):
         '''Creates a FixedPointFinder object.
 
         Args:
@@ -46,43 +54,57 @@ class FixedPointFinder(object):
 
             tol (optional): A positive scalar specifying the optimization
             termination criteria on improvement in the objective function.
+            Default: 1e-20.
 
             max_iters (optional): A non-negative integer specifying the
             maximum number of gradient descent iterations allowed.
             Optimization terminates upon reaching this iteration count, even
-            if 'tol' has not been reached.
+            if 'tol' has not been reached. Default: 5000.
 
             method (optional): Either 'joint' or 'sequential' indicating
             whether to find each fixed point individually, or to optimize them
             all jointly. Further testing is required to understand pros and
             cons. Empirically, 'joint' runs faster (potentially making better
             use of GPUs, fewer python for loops), but may be susceptible to
-            pathological conditions.
+            pathological conditions. Default: 'joint'.
+
+            do_rerun_outliers (optional): A bool indicating whether or not to
+            run additional optimization iterations on putative outlier states,
+            identified as states with large q values relative to the median q
+            value across all identified fixed points (i.e., after the initial
+            optimization ran to termination). These additional optimizations
+            are run sequentially (even if method=='joint'). Default: True.
+
+            outlier_q_scale (optional): A positive float specifying the q
+            value for putative outlier fixed points, relative to the median q
+            value across all identified fixed points. Default: 10.
 
             tol_unique (optional): A positive scalar specifying the numerical
             precision required to label two fixed points as being unique from
             one another, as measured by euclidean distance between the two
             fixed points. This tolerance is used to discard numerically
-            similar fixed points.
+            similar fixed points. Default: 1e-5.
 
             do_compute_jacobians (optional): A bool specifying whether or not
-            to compute the Jacobian at each fixed point.
+            to compute the Jacobian at each fixed point. Default: True.
 
             verbose (optional): A bool specifying whether or not to print
-            per-iteration updates during each optimization.
+            per-iteration updates during each optimization. Default: False.
 
             alr_hps (optional): A dict containing hyperparameters governing an
-            adaptive learning rate. See AdaptiveLearningRate.py for more
-            information on these hyperparameters and their default values.
+            adaptive learning rate. Default: Set by AdaptiveLearningRate. See
+            AdaptiveLearningRate.py for more information on these
+            hyperparameters and their default values.
 
             agnc_hps (optional): A dict containing hyperparameters governing
-            an adaptive gradient norm clipper. See AdaptiveGradientNormClip.py
+            an adaptive gradient norm clipper. Default: Set by
+            AdaptiveGradientNormClip. See AdaptiveGradientNormClip.py
             for more information on these hyperparameters and their default
             values.
 
             adam_hps (optional): A dict containing hyperparameters governing
-            Tensorflow's Adam Optimizer. Default values are specified by
-            AdamOptimizer.
+            Tensorflow's Adam Optimizer. Default: 'epsilon'=0.01, all other
+            hyperparameter defaults set by AdamOptimizer.
         '''
 
         self.rnn_cell = rnn_cell
@@ -103,9 +125,11 @@ class FixedPointFinder(object):
         # *********************************************************************
 
         self.tol = tol
-        self.tol_unique = tol_unique
-        self.max_iters = max_iters
         self.method = method
+        self.max_iters = max_iters
+        self.do_rerun_outliers = do_rerun_outliers
+        self.outlier_q_scale = outlier_q_scale
+        self.tol_unique = tol_unique
         self.do_compute_jacobians = do_compute_jacobians
         self.verbose = verbose
 
@@ -224,6 +248,9 @@ class FixedPointFinder(object):
             raise ValueError('Unsupported optimization method. Must be either \
                 \'joint\' or \'sequential\', but was  \'%s\'' % self.method)
 
+        if self.do_rerun_outliers:
+            self._run_additional_iterations_on_outliers()
+
         self._identify_unique_fixed_points()
 
         self._compute_jacobians_at_unique_fixed_points()
@@ -269,7 +296,7 @@ class FixedPointFinder(object):
 
         q = tf.reduce_mean(q_1xn)
 
-        print('Running joint optimization...')
+        print('Finding fixed points via joint optimization...')
         self.xstar, self.F_xstar, _, dq, n_iters = \
             self._run_optimization_loop(q, x, F, states, new_states)
 
@@ -308,6 +335,8 @@ class FixedPointFinder(object):
         # Allocate memory for storing results *********************************
         # *********************************************************************
 
+        print('Finding fixed points via sequential optimizations...')
+
         n_dims = self.n_dims
         n_inits = self.n_inits
 
@@ -339,12 +368,8 @@ class FixedPointFinder(object):
 
             print('Initialization %d of %d:' % (init_idx+1, self.n_inits))
 
-            x, F, state, new_state = self._grab_RNN(initial_state)
-
-            q = 0.5 * tf.reduce_sum(tf.square(F - x))
-
-            xstar, F_xstar, qstar, dq, n_iters = self._run_optimization_loop(
-                q, x, F, state, new_state)
+            xstar, F_xstar, qstar, dq, n_iters = \
+                self._run_single_optimization(initial_state)
 
             # *****************************************************************
             # Package results *************************************************
@@ -355,6 +380,31 @@ class FixedPointFinder(object):
             self.qstar[init_idx] = qstar
             self.dq[init_idx] = dq
             self.n_iters[init_idx] = n_iters
+
+    def _run_additional_iterations_on_outliers(self):
+
+        outlier_min_q = np.median(self.qstar)*self.outlier_q_scale
+        is_outlier = self.qstar > outlier_min_q
+        idx_outliers = np.where(is_outlier)[0]
+        n_outliers = len(idx_outliers)
+
+        print('Detected %d \"outliers.\"' % n_outliers)
+        print('Performing additional optimization iterations.')
+        for counter, idx in enumerate(idx_outliers):
+            print('\n\tOutlier %d of %d (q=%.3e).'
+                % (counter+1, n_outliers, self.qstar[idx]))
+
+            initial_state = np.expand_dims(self.xstar[idx],axis=0)
+            if self.is_lstm:
+                initial_state = self._convert_to_LSTMStateTuple(
+                    initial_state)
+            xstar, F_xstar, qstar, dq, n_iters = self._run_single_optimization(
+                initial_state)
+            self.xstar[idx] = xstar
+            self.F_xstar[idx] = F_xstar
+            self.qstar[idx] = qstar
+            self.dq[idx] = dq
+            self.n_iters[idx] += n_iters
 
     def _grab_RNN(self, initial_states):
         '''Creates objects for interfacing with the RNN.
@@ -417,6 +467,25 @@ class FixedPointFinder(object):
         self.session.run(init)
 
         return x, F, states, new_states
+
+    def _run_single_optimization(self, initial_state):
+        '''Finds a single fixed point from a single initial state.
+
+        Args:
+            initial_state: A [1 x n_dims] numpy array or an
+            LSTMStateTuple with initial_state.c and initial_state.h as
+            [1 x n_dims/2] numpy arrays. These data specify an initial
+            state of the RNN, from which the optimization will search for
+            a single fixed point. The choice of type must be consistent with
+            state type of rnn_cell.
+
+        Returns:
+            All arguments returned by _run_optimization_loop (with
+            n_inits=1)
+        '''
+        x, F, state, new_state = self._grab_RNN(initial_state)
+        q = 0.5 * tf.reduce_sum(tf.square(F - x))
+        return self._run_optimization_loop(q, x, F, state, new_state)
 
     def _run_optimization_loop(self, q, x, F, state, new_state):
         '''Minimize the scalar function q with respect to the tf.Variable x.

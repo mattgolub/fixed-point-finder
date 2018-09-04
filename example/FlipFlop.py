@@ -18,7 +18,6 @@ from RecurrentWhisperer import RecurrentWhisperer
 
 import tensorflow as tf
 import numpy as np
-import numpy.random as npr
 import matplotlib.pyplot as plt
 
 class FlipFlop(RecurrentWhisperer):
@@ -64,6 +63,7 @@ class FlipFlop(RecurrentWhisperer):
         return {
             'rnn_type': 'vanilla', # 'vanilla', 'gru' or 'lstm'
             'n_hidden': 24,
+            'agnc_hps': {'init_clip_val': 0.0}, # overrides RecurrentWhisperer
             'data_hps': {
                 'n_batch':  128,
                 'n_time': 256,
@@ -222,13 +222,15 @@ class FlipFlop(RecurrentWhisperer):
         p_flip = data_hps['p_flip']
 
         # Randomly generate unsigned input pulses
-        unsigned_inputs = npr.binomial(1, p_flip, [n_batch, n_time, n_bits])
+        unsigned_inputs = self.rng.binomial(
+            1, p_flip, [n_batch, n_time, n_bits])
 
         # Ensure every trial is initialized with a pulse at time 0
         unsigned_inputs[:, 0, :] = 1
 
         # Generate random signs {-1, +1}
-        random_signs = 2*npr.binomial(1, 0.5, [n_batch, n_time, n_bits]) - 1
+        random_signs = 2*self.rng.binomial(
+            1, 0.5, [n_batch, n_time, n_bits]) - 1
 
         # Apply random signs to input pulses
         inputs = np.multiply(unsigned_inputs, random_signs)
