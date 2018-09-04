@@ -382,7 +382,19 @@ adam_hps={'epsilon': 0.01}):
             self.n_iters[init_idx] = n_iters
 
     def _run_additional_iterations_on_outliers(self):
+        '''Detects outlier states with respect to the q function and runs
+        additional optimization iterations on those states, using the (slow)
+        sequential optimization procedure. This should only be used after
+        calling either _run_joint_optimization or
+        _run_sequential_optimizations. Updates class variables containing
+        optimization results.
 
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
         outlier_min_q = np.median(self.qstar)*self.outlier_q_scale
         is_outlier = self.qstar > outlier_min_q
         idx_outliers = np.where(is_outlier)[0]
