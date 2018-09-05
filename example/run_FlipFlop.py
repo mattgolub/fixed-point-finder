@@ -24,13 +24,13 @@ from FlipFlop import FlipFlop
 # *****************************************************************************
 
 # Hyperparameters for AdaptiveLearningRate
-alr_hps = {'initial_rate': 0.05}
+alr_hps = {'initial_rate': 0.1}
 
 # Hyperparameters for FlipFlop
 # See FlipFlop.py for detailed descriptions.
 hps = {
-    'rnn_type': 'gru',
-    'n_hidden': 24,
+    'rnn_type': 'lstm',
+    'n_hidden': 64,
     'min_loss': 1e-3,
     'min_learning_rate': 1e-5,
     'log_dir': './logs/',
@@ -54,10 +54,11 @@ rng = ff.rng
 
 '''Initial states are sampled from states observed during realistic behavior
 of the network. Because a well-trained network transitions instantaneously
-from one stable state to another, observed networks states are never near the
-unstable fixed points. In order to identify ALL fixed points, noise must be
-added to the initial states before handing them to the fixed point finder.'''
-NOISE_SCALE = 0.5 # Standard deviation of noise added to initial states
+from one stable state to another, observed networks states spend little if any
+time near the unstable fixed points. In order to identify ALL fixed points,
+noise must be added to the initial states before handing them to the fixed
+point finder.'''
+NOISE_SCALE = 2.5 # Standard deviation of noise added to initial states
 
 N_INITS = 256 # The number of initial states to provide
 

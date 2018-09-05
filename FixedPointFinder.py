@@ -401,6 +401,10 @@ adam_hps={'epsilon': 0.01}):
         n_outliers = len(idx_outliers)
 
         print('Detected %d \"outliers.\"' % n_outliers)
+
+        if n_outliers == 0:
+            return
+
         print('Performing additional optimization iterations.')
         for counter, idx in enumerate(idx_outliers):
             print('\n\tOutlier %d of %d (q=%.3e).'
