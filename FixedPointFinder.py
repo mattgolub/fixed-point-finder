@@ -35,7 +35,7 @@ class FixedPointFinder(object):
         verbose=False,
         alr_hps=dict(),
         agnc_hps=dict(),
-adam_hps={'epsilon': 0.01}):
+        adam_hps={'epsilon': 0.01}):
         '''Creates a FixedPointFinder object.
 
         Args:
