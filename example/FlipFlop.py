@@ -11,6 +11,7 @@ from __future__ import division
 from __future__ import print_function
 
 import sys
+import pdb
 
 PATH_TO_RECURRENT_WHISPERER = '../../recurrent-whisperer/'
 sys.path.insert(0, PATH_TO_RECURRENT_WHISPERER)
@@ -41,9 +42,48 @@ class FlipFlop(RecurrentWhisperer):
         inputs of the flip-flop task. All that is needed to get started is to
         construct a flipflop object and to call .train on that object:
 
-        hps = {...} # dictionary of hyperparameter key/value pairs
+        # dict of hyperparameter key/value pairs
+        # (see 'Hyperparameters' section below)
+        hps = {...}
+
         ff = FlipFlop(**hps)
         ff.train()
+
+    Hyperparameters:
+        rnn_type: string specifying the architecture of the RNN. Currently
+        must be one of {'vanilla', 'gru', 'lstm'}. Default: 'vanilla'.
+
+        n_hidden: int specifying the number of hidden units in the RNN.
+        Default: 24.
+
+        data_hps: dict containing hyperparameters for generating synthetic
+        data. Contains the following keys:
+
+            'n_batch': int specifying the number of synthetic trials to use
+            per training batch (i.e., for one gradient step). Default: 128.
+
+            'n_time': int specifying the duration of each synthetic trial
+            (measured in timesteps). Default: 265.
+
+            'n_bits': int specifying the number of input channels into the
+            FlipFlop device (which will also be the number of output channels).
+            Default: 3.
+
+            'p_flip': float between 0.0 and 1.0 specifying the probability
+            that a particular input channel at a particular timestep will
+            contain a pulse (-1 or +1) on top of its steady-state value (0).
+            Pulse signs are chosen by fair coin flips, and pulses are produced
+            with the same statistics across all input channels and across all
+            timesteps (i.e., there are no history effects, there are no
+            interactions across input channels). Default: 0.2.
+
+        log_dir: string specifying the top-level directory for saving various
+        training runs (where each training run is specified by a different set
+        of hyperparameter settings). When tuning hyperparameters, log_dir is
+        meant to be constant across models. Default: '/tmp/flipflop_logs/'.
+
+        n_trials_plot: int specifying the number of synthetic trials to plot
+        per visualization update. Default: 4.
     '''
 
     @staticmethod
@@ -58,14 +98,13 @@ class FlipFlop(RecurrentWhisperer):
             None.
 
         Returns:
-            A dict of hyperparameters.
+            dict of hyperparameters.
         '''
         return {
-            'rnn_type': 'vanilla', # 'vanilla', 'gru' or 'lstm'
+            'rnn_type': 'vanilla',
             'n_hidden': 24,
-            'agnc_hps': {'init_clip_val': 0.0}, # overrides RecurrentWhisperer
             'data_hps': {
-                'n_batch':  128,
+                'n_batch': 128,
                 'n_time': 256,
                 'n_bits': 3,
                 'p_flip': 0.2}
@@ -82,11 +121,10 @@ class FlipFlop(RecurrentWhisperer):
             None.
 
         Returns:
-            A dict of hyperparameters.
+            dict of hyperparameters.
         '''
         return {
             'log_dir': '/tmp/flipflop_logs/',
-            'n_epochs_per_validation_update': -1, #overrides RecurrentWhisperer
             'n_trials_plot': 4,
             }
 
@@ -150,7 +188,6 @@ class FlipFlop(RecurrentWhisperer):
     def _train_batch(self, batch_data):
         '''See docstring in RecurrentWhisperer.'''
 
-
         ops_to_eval = [self.train_op,
             self.grad_global_norm,
             self.loss,
@@ -163,10 +200,19 @@ class FlipFlop(RecurrentWhisperer):
         feed_dict[self.grad_norm_clip_val] = self.adaptive_grad_norm_clip()
 
         [ev_train_op,
-            ev_grad_global_norm,
-            ev_loss,
-            ev_merged_opt_summaries] = \
+         ev_grad_global_norm,
+         ev_loss,
+         ev_merged_opt_summaries] = \
                 self.session.run(ops_to_eval, feed_dict=feed_dict)
+
+        if self._epoch()==0:
+            '''Hack to prevent throwing the vertical axis on the
+            Tensorboard figure for grad_norm_clip_val (grad_norm_clip val is
+            initialized to an enormous number to prevent clipping before we
+            know the scale of the gradients).'''
+            feed_dict[self.grad_norm_clip_val] = np.nan
+            ev_merged_opt_summaries = \
+                self.session.run(self.merged_opt_summaries, feed_dict)
 
         self.writer.add_summary(ev_merged_opt_summaries, self._step())
 
