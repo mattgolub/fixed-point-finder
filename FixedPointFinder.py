@@ -770,15 +770,10 @@ class FixedPointFinder(object):
         Returns:
             None.
         '''
-
         def plot_1d(ax, z, *args):
             ax.plot(z, *args)
         def plot_2d(ax, z, *args):
             ax.plot(z[:, 0], z[:, 1], *args)
-        def plot_3d(ax, z, *args):
-            ax.plot(z[:, 0], z[:, 1], z[:, 2], *args)
-
-        do_analyze_jacobians = True
 
         xstar = self.unique_xstar
         J_xstar = self.unique_J_xstar
@@ -786,60 +781,111 @@ class FixedPointFinder(object):
         n_inits, n_dims = np.shape(xstar)
         fig = plt.figure()
 
-
         if n_dims >= 2:
             pca = PCA(n_components=np.min([n_dims, 3]))
             pca.fit(xstar)
-            zstar = pca.transform(xstar)
-
             ax = fig.add_subplot(111, projection='3d')
         else:
             # For 1D or 0D networks (i.e., never)
             zstar = xstar
             ax = fig.add_subplot(111)
 
-        if not do_analyze_jacobians:
-            plot_spec = 'g.'
-
         for init_idx in range(n_inits):
-
-            if do_analyze_jacobians:
-                if FixedPointFinder._is_stable(J_xstar[init_idx]):
-                    # Stable fixed point
-                    plot_spec = 'k.'
-                else:
-                    # Unstable fixed point
-                    plot_spec = 'r.'
 
             if n_dims == 1:
                 plot_1d(ax, zstar[init_idx:(init_idx+1), :], plot_spec)
             if n_dims == 2:
                 plot_2d(ax, zstar[init_idx:(init_idx+1), :], plot_spec)
             else:
-                plot_3d(ax, zstar[init_idx:(init_idx+1), :], plot_spec)
+                self._plot_fixed_point(
+                    ax,
+                    xstar[init_idx:(init_idx+1)],
+                    J_xstar[init_idx],
+                    pca,
+                    scale=0.5)
 
         plt.ion()
         plt.show()
         plt.pause(1e-10)
 
     @staticmethod
-    def _is_stable(J_np):
-        '''Determines whether a state is stable or not via diagonalization of
-        the Jacobian evaluated at that state.
+    def _plot_fixed_point(ax, xstar, J, pca, scale=1.0, n_modes=3):
+        '''Plots a single fixed point and its dominant eigenmodes.
 
         Args:
-            J_np is a [n_dims x n_dims] numpy array representing a Jacobian
-            matrix.
+            ax: Matplotlib figure axis on which to plot everything.
+
+            xstar: [1 x n_dims] numpy array representing the fixed point to be
+            plotted.
+
+            J: [n_dims x n_dims] numpy array containing the Jacobian of the
+            RNN transition function at fixed point xstar.
+
+            pca: PCA object as returned by sklearn.decomposition.PCA. This is
+            used to transform the high-d state space representations into 3-d
+            for visualization.
+
+            scale (optional): Scale factor for stretching (>1) or shrinking
+            (<1) lines representing eigenmodes of the Jacobian. Default: 1.0 (
+            unity).
+
+            n_modes (optional): Number of eigenmodes to plot. Default: 3.
 
         Returns:
-            A bool indicating whether or not the state is stable.
+            None.
         '''
 
-        e_val, e_vec = np.linalg.eig(J_np)
-        if all(np.abs(e_val) < 1.0):
-            return True
+
+        def plot_3d(ax, z, *args):
+            ax.plot(z[:, 0], z[:, 1], z[:, 2], *args)
+
+        e_vals, e_vecs = np.linalg.eig(J)
+        sorted_e_val_idx = np.argsort(np.abs(e_vals))
+
+        if n_modes > len(e_vals):
+            n_modes = e_vals
+
+        for mode_idx in range(n_modes):
+            idx = sorted_e_val_idx[-(mode_idx+1)] # -[1, 2, ..., n_modes]
+
+            # Magnitude of complex eigenvalue
+            e_val_mag = np.abs(e_vals[idx])
+
+            # Already real. Cast to avoid warning.
+            e_vec = np.real(e_vecs[:,idx])
+
+            # [1 x d] numpy arrays
+            xstar_plus = xstar + scale*e_val_mag*e_vec
+            xstar_minus = xstar - scale*e_val_mag*e_vec
+
+            # [3 x d] numpy array
+            xstar_mode = np.vstack((xstar_minus, xstar, xstar_plus))
+
+            # [3 x 3] numpy array
+            zstar_mode = pca.transform(xstar_mode)
+
+            if e_val_mag < 1.0:
+                color = 'k'
+            else:
+                color = 'r'
+
+            ax.plot(zstar_mode[:, 0],
+                    zstar_mode[:, 1],
+                    zstar_mode[:, 2],
+                    color=color)
+
+        is_stable = all(np.abs(e_vals) < 1.0)
+        if is_stable:
+            color = 'k'
         else:
-            return False
+            color = 'r'
+        zstar = pca.transform(xstar)
+        ax.plot(zstar[:, 0],
+                zstar[:, 1],
+                zstar[:, 2],
+                color=color ,
+                marker='.',
+                markersize=12)
 
     @staticmethod
     def _convert_from_LSTMStateTuple(lstm_state):
