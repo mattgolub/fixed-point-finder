@@ -751,12 +751,12 @@ class FixedPointFinder(object):
             print('\nThe Jacobians at the fixed points:')
             print(self.unique_J_xstar)
 
-    def plot_summary(self):
+    def plot_summary(self, state_trajectories=None):
         '''Plots a visualization and analysis of the unique fixed points.
 
         1) Finds a low-dimensional subspace for visualization via PCA over the
         unique fixed points. This subspace is 3-dimensional if the RNN state
-        dimensionality if >= 3.
+        dimensionality is >= 3.
 
         2) Plots the PCA representation of the stable unique fixed points as
         black dots.
@@ -765,44 +765,58 @@ class FixedPointFinder(object):
         red dots.
 
         Args:
-            None.
+            state_trajectories (optional): [n_batch x n_time x n_dims] numpy
+            array containing example RNN state trajectories include in the
+            plot.
 
         Returns:
             None.
         '''
-        def plot_1d(ax, z, *args):
-            ax.plot(z, *args)
-        def plot_2d(ax, z, *args):
-            ax.plot(z[:, 0], z[:, 1], *args)
-
         xstar = self.unique_xstar
         J_xstar = self.unique_J_xstar
 
         n_inits, n_dims = np.shape(xstar)
         fig = plt.figure()
 
-        if n_dims >= 2:
-            pca = PCA(n_components=np.min([n_dims, 3]))
+        if n_dims >= 3:
+            pca = PCA(n_components=3)
             pca.fit(xstar)
             ax = fig.add_subplot(111, projection='3d')
+            ax.set_xlabel('PC 1')
+            ax.set_ylabel('PC 2')
+            ax.set_zlabel('PC 3')
         else:
             # For 1D or 0D networks (i.e., never)
-            zstar = xstar
+            pca = None
             ax = fig.add_subplot(111)
+            ax.xlabel('Hidden 1')
+            if n_dims == 2:
+                ax.ylabel('Hidden 2')
+
+        if state_trajectories is not None:
+            # Use LSTMTools here
+            if self.is_lstm:
+                state_trajectories = self._convert_from_LSTMStateTuple(
+                    state_trajectories)
+
+            n_batch = state_trajectories.shape[0]
+
+            for batch_idx in range(n_batch):
+                x_idx = state_trajectories[batch_idx]
+
+                if n_dims >= 3:
+                    z_idx = pca.transform(x_idx)
+                else:
+                    z_idx = x_idx
+                self._plot_123d(ax, z_idx, color='b', linewidth=0.2)
 
         for init_idx in range(n_inits):
-
-            if n_dims == 1:
-                plot_1d(ax, zstar[init_idx:(init_idx+1), :], plot_spec)
-            if n_dims == 2:
-                plot_2d(ax, zstar[init_idx:(init_idx+1), :], plot_spec)
-            else:
-                self._plot_fixed_point(
-                    ax,
-                    xstar[init_idx:(init_idx+1)],
-                    J_xstar[init_idx],
-                    pca,
-                    scale=0.5)
+            self._plot_fixed_point(
+                ax,
+                xstar[init_idx:(init_idx+1)],
+                J_xstar[init_idx],
+                pca,
+                scale=0.5)
 
         plt.ion()
         plt.show()
@@ -834,11 +848,7 @@ class FixedPointFinder(object):
         Returns:
             None.
         '''
-
-
-        def plot_3d(ax, z, *args):
-            ax.plot(z[:, 0], z[:, 1], z[:, 2], *args)
-
+        n_dims = xstar.shape[1]
         e_vals, e_vecs = np.linalg.eig(J)
         sorted_e_val_idx = np.argsort(np.abs(e_vals))
 
@@ -861,77 +871,115 @@ class FixedPointFinder(object):
             # [3 x d] numpy array
             xstar_mode = np.vstack((xstar_minus, xstar, xstar_plus))
 
-            # [3 x 3] numpy array
-            zstar_mode = pca.transform(xstar_mode)
-
             if e_val_mag < 1.0:
                 color = 'k'
             else:
                 color = 'r'
 
-            ax.plot(zstar_mode[:, 0],
-                    zstar_mode[:, 1],
-                    zstar_mode[:, 2],
-                    color=color)
+            if n_dims >= 3:
+                # [3 x 3] numpy array
+                zstar_mode = pca.transform(xstar_mode)
+            else:
+                zstar_mode = x_star_mode
+
+            FixedPointFinder._plot_123d(ax, zstar_mode, color=color)
 
         is_stable = all(np.abs(e_vals) < 1.0)
         if is_stable:
             color = 'k'
         else:
             color = 'r'
-        zstar = pca.transform(xstar)
-        ax.plot(zstar[:, 0],
-                zstar[:, 1],
-                zstar[:, 2],
-                color=color ,
-                marker='.',
-                markersize=12)
+
+        if n_dims >= 3:
+            zstar = pca.transform(xstar)
+        else:
+            zstar = xstar
+
+        FixedPointFinder._plot_123d(
+            ax, zstar, color=color, marker='.', markersize=12)
 
     @staticmethod
+    def _plot_123d(ax, z, **kwargs):
+        '''Plots in 1D, 2D, or 3D.
+
+        Args:
+            ax: Matplotlib figure axis on which to plot everything.
+
+            z: [n x n_dims] numpy array containing data to be plotted,
+            where n_dims is 1, 2, or 3.
+
+            any keyword arguments that can be passed to ax.plot(...).
+
+        Returns:
+            None.
+        '''
+        n_dims = z.shape[1]
+        if n_dims ==3:
+            ax.plot(z[:, 0], z[:, 1], z[:, 2], **kwargs)
+        elif n_dims == 2:
+            ax.plot(z[:, 0], z[:, 1], **kwargs)
+        elif n_dims == 1:
+            ax.plot(z, **kwargs)
+
+    # To do: integrate into RNNTools
+    @staticmethod
     def _convert_from_LSTMStateTuple(lstm_state):
-        '''Concatenates the representation of LSTM hidden and cell states.
+        '''Concatenates the representations of LSTM hidden and cell states.
 
         Args:
             lstm_state: an LSTMStateTuple, with .c and .h as
-            [n_batch, n_dims/2] numpy or tf objects.
+            [n_batch, n_dims/2] or [n_batch, n_time, n_dims/2] numpy or tf
+            objects.
 
         Returns:
-            A numpy or tf object with shape [n_batch, n_dims] containing the
-            concatenated hidden and cell states (type is preserved from
-            lstm_state).
+            A numpy or tf object with shape [n_batch, n_dims] or
+            [n_batch, n_time, n_dims] containing the concatenated hidden and
+            cell states (type is preserved from lstm_state).
         '''
-
         c = lstm_state.c
         h = lstm_state.h
 
-        if FixedPointFinder._is_tf_object(c):
-            return tf.concat((c, h), axis=1)
-        else:
-            return np.hstack((c, h))
+        rank = len(lstm_state.c.shape) # works for tf and np objects
+        axis = rank - 1
 
+        if FixedPointFinder._is_tf_object(c):
+            return tf.concat((c, h), axis=axis)
+        else:
+            return np.concatenate((c, h), axis=axis)
+
+    # To do: integrate into RNNTools
     @staticmethod
     def _convert_to_LSTMStateTuple(x):
         '''Converts a concatenated representation of LSTMT hidden and cell
         states to tf's LSTMStateTuple representation.
 
         Args:
-            x: An [n_batch, n_dims] numpy or tf object containing concatenated
-            hidden and cell states.
+            x: [n_batch, n_dims] or [n_batch, n_time, n_dims] numpy or tf
+            object containing concatenated hidden and cell states.
 
         Returns:
             An LSTMStateTuple containing the de-concatenated hidden and cell
-            states from x. Resultant .c and .h are each [n_batch , n_dims/2]
-            numpy or tf objects (type is preserved from x).
+            states from x. Resultant .c and .h are either [n_batch , n_dims/2]
+            or [n_batch, n_time, n_dims/2] numpy or tf objects (type and rank
+            preserved from x).
         '''
-        n_concat_dims = x.shape[1]
+        rank = len(x.shape) # works for tf and np objects
+        n_concat_dims = x.shape[rank - 1]
         if np.mod(n_concat_dims, 2) != 0:
-            raise ValueError('x must contain an even number of columns \
-                             (i.e., along dimension 1), \
-                             but has %d' % n_concat_dims)
+            raise ValueError('x must have an even length'
+                             ' along its last dimension,'
+                             ' but was length %d' % n_concat_dims)
 
         n_dims = n_concat_dims//2 # floor division returns an int
-        c = x[0:, :n_dims] # [n_batch x n_dims]
-        h = x[0:, n_dims:] # [n_batch x n_dims]
+        if rank == 2:
+            c = x[0:, :n_dims] # [n_batch x n_dims]
+            h = x[0:, n_dims:] # [n_batch x n_dims]
+        elif rank == 3:
+            c = x[0:, 0:, :n_dims] # [n_batch x n_time x n_dims]
+            h = x[0:, 0:, n_dims:] # [n_batch x n_time x n_dims]
+        else:
+            raise ValueError('x must be rank 2 or 3, but was rank %d' % rank)
+
         return tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
 
     @staticmethod

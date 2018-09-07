@@ -63,7 +63,7 @@ class FlipFlop(RecurrentWhisperer):
             per training batch (i.e., for one gradient step). Default: 128.
 
             'n_time': int specifying the duration of each synthetic trial
-            (measured in timesteps). Default: 265.
+            (measured in timesteps). Default: 256.
 
             'n_bits': int specifying the number of input channels into the
             FlipFlop device (which will also be the number of output channels).
@@ -133,7 +133,6 @@ class FlipFlop(RecurrentWhisperer):
 
         See docstring in RecurrentWhisperer.
         '''
-
         hps = self.hps
         n_hidden = hps.n_hidden
 
@@ -220,16 +219,69 @@ class FlipFlop(RecurrentWhisperer):
 
         return summary
 
-    def predict(self, batch_data):
+    def predict(self, batch_data, do_predict_full_LSTM_state=False):
         '''See docstring in RecurrentWhisperer.'''
 
-        ops_to_eval = [self.hidden_bxtxd, self.pred_output_bxtxd]
+        if do_predict_full_LSTM_state:
+            return self._predict_with_LSTM_cell_states(batch_data)
+        else:
+            ops_to_eval = [self.hidden_bxtxd, self.pred_output_bxtxd]
+            feed_dict = {self.inputs_bxtxd: batch_data['inputs']}
+            ev_hidden_bxtxd, ev_pred_output_bxtxd = \
+                self.session.run(ops_to_eval, feed_dict=feed_dict)
+
+            predictions = {
+                'state': ev_hidden_bxtxd,
+                'output': ev_pred_output_bxtxd
+                }
+
+            return predictions
+
+    def _predict_with_LSTM_cell_states(self, batch_data):
+        # To do: write docstring
+        # To do: replace with call to RNNTools
+
+        '''The following is added for execution only when LSTM predictions are
+        needed for both the hidden and cell states. Tensorflow does not make
+        it easy to access the cell states via dynamic_rnn.'''
+
+        hps = self.hps
+        if hps.rnn_type != 'lstm':
+            return self.predict(batch_data)
+
+        n_hidden = hps.n_hidden
+        [n_batch, n_time, n_bits] = batch_data['inputs'].shape
+        initial_state = self.rnn_cell.zero_state(n_batch, dtype=tf.float32)
+
+        ''' Add ops to the graph for getting the complete LSTM state
+        (i.e., hidden and cell) at every timestep.'''
+        self.full_state_list = []
+        for t in range(n_time):
+            input_ = self.inputs_bxtxd[:,t,:]
+            if t == 0:
+                full_state_t_minus_1 = initial_state
+            else:
+                full_state_t_minus_1 = self.full_state_list[-1]
+            _, full_state_bxd = self.rnn_cell(input_, full_state_t_minus_1)
+            self.full_state_list.append(full_state_bxd)
+
+        '''Evaluate those ops'''
+        ops_to_eval = [self.full_state_list, self.pred_output_bxtxd]
         feed_dict = {self.inputs_bxtxd: batch_data['inputs']}
-        ev_hidden_bxtxd, ev_pred_output_bxtxd = \
+        ev_full_state_list, ev_pred_output_bxtxd = \
             self.session.run(ops_to_eval, feed_dict=feed_dict)
 
+        '''Package the results'''
+        h = np.zeros([n_batch, n_time, n_hidden]) # hidden states: bxtxd
+        c = np.zeros([n_batch, n_time, n_hidden]) # cell states: bxtxd
+        for t in range(n_time):
+            h[:,t,:] = ev_full_state_list[t].h
+            c[:,t,:] = ev_full_state_list[t].c
+
+        ev_LSTMCellState = tf.nn.rnn_cell.LSTMStateTuple(h=h, c=c)
+
         predictions = {
-            'hidden': ev_hidden_bxtxd,
+            'state': ev_LSTMCellState,
             'output': ev_pred_output_bxtxd
             }
 
