@@ -79,8 +79,11 @@ fpf_hps = {}
 example_trials = ff.generate_flipflop_trials()
 example_predictions = ff.predict(example_trials,
                                  do_predict_full_LSTM_state=is_lstm)
-example_states = FixedPointFinder._convert_from_LSTMStateTuple(
-    example_predictions['state'])
+if is_lstm:
+    example_states = FixedPointFinder._convert_from_LSTMStateTuple(
+        example_predictions['state'])
+else:
+    example_states = example_predictions['state']
 
 # if lstm, this reflects the concatenated hidden and cell states
 n_states = example_states.shape[2]
