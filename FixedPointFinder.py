@@ -12,6 +12,7 @@ from __future__ import print_function
 
 import pdb
 import numpy as np
+import numpy.random as npr
 import tensorflow as tf
 from tensorflow.python.ops import parallel_for as pfor
 
@@ -24,7 +25,7 @@ from AdaptiveGradNormClip import AdaptiveGradNormClip
 
 class FixedPointFinder(object):
 
-    def __init__(self, rnn_cell, sess, initial_states, inputs,
+    def __init__(self, rnn_cell, sess,
         tol=1e-20,
         max_iters=5000,
         method='joint',
@@ -41,16 +42,6 @@ class FixedPointFinder(object):
         Args:
             rnn_cell: A Tensorflow RNN cell, which has been initialized or
             restored in the Tensorflow session, 'sess'.
-
-            initial_states: Either an [n_inits x n_dims] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_dims] numpy arrays. These data specify the initial
-            states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
-
-            inputs: A [1 x n_inputs] numpy array specifying a set of constant
-            inputs into the RNN.
 
             tol (optional): A positive scalar specifying the optimization
             termination criteria on improvement in the objective function.
@@ -110,20 +101,18 @@ class FixedPointFinder(object):
         self.rnn_cell = rnn_cell
         self.session = sess
 
-        self.inputs = inputs
-        self.initial_states = initial_states
         self.is_lstm = isinstance(
             rnn_cell.state_size, tf.nn.rnn_cell.LSTMStateTuple)
 
-        if self.is_lstm:
-            self.n_inits, self.n_dims = self.initial_states.h.shape
-        else:
-            self.n_inits, self.n_dims = self.initial_states.shape
+        # These class variables are set by find_fixed_points
+        self.initial_states = None
+        self.inputs = None
+        self.n_inits = None
+        self.n_dims = None
 
         # *********************************************************************
         # Optimization hyperparameters ****************************************
         # *********************************************************************
-
         self.tol = tol
         self.method = method
         self.max_iters = max_iters
@@ -152,11 +141,74 @@ class FixedPointFinder(object):
         self.unique_q = None
         self.unique_dq = None
 
-    def find_fixed_points(self):
+    def sample_states(self, state_traj, n_inits,
+                      noise_scale=0.0, rng=npr.RandomState(0)):
+        '''Draws random samples from trajectories of the RNN state. Samples
+        can optionally be corrupted by independent and identically distributed
+        (IID) Gaussian noise. These samples are intended to be used as initial
+        states for fixed point optimizations.
+
+        Args:
+            state_traj: [n_batch x n_time x n_dims] numpy array or
+            LSTMStateTuple with .c and .h as [n_batch x n_time x n_dims] numpy
+            arrays. Contains example trajectories of the RNN state.
+
+            n_inits: int specifying the number of sampled states to return.
+
+            noise_scale (optional): non-negative float specifying the standard
+            deviation of IID Gaussian noise samples added to the sampled
+            states.
+
+        Returns:
+            initial_states: Sampled RNN states as a [n_inits x n_dims] numpy
+            array or as an LSTMStateTuple with .c and .h as [n_inits x n_dims]
+            numpy arrays (type matches than of state_traj).
+
+        Raises:
+            ValueError if noise_scale is negative.
+        '''
+        if self.is_lstm:
+            state_traj_bxtxd = FixedPointFinder._convert_from_LSTMStateTuple(
+                state_traj)
+        else:
+            state_traj_bxtxd = state_traj
+
+        [n_batch, n_time, n_states] = state_traj_bxtxd.shape
+
+        # Draw random samples from state trajectories
+        states = np.zeros([n_inits, n_states])
+        for init_idx in range(n_inits):
+            trial_idx = rng.randint(n_batch)
+            time_idx = rng.randint(n_time)
+            states[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
+
+        # Add IID Gaussian noise to the sampled states
+        if noise_scale > 0.0:
+            states += noise_scale * rng.randn(n_inits, n_states)
+        elif noise_scale < 0.0:
+            raise ValueError('noise_scale must be non-negative,'
+                             ' but was %f' % noise_scale)
+        else: # noise_scale == 0 --> don't add noise
+            pass
+
+        if self.is_lstm:
+            return FixedPointFinder._convert_to_LSTMStateTuple(states)
+        else:
+            return states
+
+    def find_fixed_points(self, initial_states, inputs):
         '''Finds RNN fixed points and the Jacobians at the fixed points.
 
         Args:
-            None
+            initial_states: Either an [n_inits x n_dims] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_dims] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: A [1 x n_inputs] numpy array specifying a set of constant
+            inputs into the RNN.
 
         Returns:
             None
@@ -239,6 +291,13 @@ class FixedPointFinder(object):
         and cell states). If one requires state representations as type
         LSTMStateCell, use _convert_to_LSTMStateTuple(...).
         '''
+        self.initial_states = initial_states
+        self.inputs = inputs
+
+        if self.is_lstm:
+            self.n_inits, self.n_dims = self.initial_states.h.shape
+        else:
+            self.n_inits, self.n_dims = self.initial_states.shape
 
         if self.method == 'sequential':
             self._run_sequential_optimizations()
@@ -254,6 +313,140 @@ class FixedPointFinder(object):
         self._identify_unique_fixed_points()
 
         self._compute_jacobians_at_unique_fixed_points()
+
+    def print_summary(self, unique=True):
+        '''Prints a summary of the fixed-point-finding optimization.
+
+        Args:
+            unique (optional): A bool specifying whether to only print a
+            summary relating to the unique fixed points identified. If False,
+            the summary will reflect all fixed points identified from all
+            initial_states.
+        '''
+
+        if unique:
+            unique_str = 'unique_'
+        else:
+            unique_str = ''
+
+        print('\nThe q function at the fixed points:')
+        print(getattr(self, unique_str + 'qstar'))
+
+        print('\nChange in the q function from the final iteration \
+              of each optimization:')
+        print(getattr(self, unique_str + 'dq'))
+
+        print('\nNumber of iterations completed for each optimization:')
+        print(getattr(self, unique_str + 'n_iters'))
+
+        print('\nThe fixed points:')
+        print(getattr(self, unique_str + 'xstar'))
+
+        print('\nThe fixed points after one state transition:')
+        print(getattr(self, unique_str + 'F_xstar'))
+        print('(these should be very close to the fixed points)')
+
+        if unique:
+            print('\nThe Jacobians at the fixed points:')
+            print(self.unique_J_xstar)
+
+    def plot_summary(self, state_traj=None, plot_batch_idx=None):
+        '''Plots a visualization and analysis of the unique fixed points.
+
+        1) Finds a low-dimensional subspace for visualization via PCA. If
+        state_traj is provided, PCA is fit to [all of] those RNN state
+        trajectories. Otherwise, PCA is fit to the identified unique fixed
+        points. This subspace is 3-dimensional if the RNN state dimensionality
+        is >= 3.
+
+        2) Plots the PCA representation of the stable unique fixed points as
+        black dots.
+
+        3) Plots the PCA representation of the unstable unique fixed points as
+        red dots.
+
+        4) (optional) Plots example RNN state trajectories as blue lines.
+
+        Args:
+            state_traj (optional): [n_batch x n_time x n_dims] numpy
+            array or LSTMStateTuple with .c and .h as
+            [n_batch x n_time x n_dims/2] numpy arrays. Contains example
+            trials of RNN state trajectories.
+
+            plot_batch_idx (optional): Indices specifying which trials in
+            state_traj to plot on top of the fixed points. Default: plot all
+            trials.
+
+        Returns:
+            None.
+        '''
+        FIG_WIDTH = 6 # inches
+        FIG_HEIGHT = 6 # inches
+        FONT_WEIGHT = 'bold'
+
+        xstar = self.unique_xstar
+        J_xstar = self.unique_J_xstar
+
+        if state_traj is not None:
+            # Use LSTMTools here
+            if self.is_lstm:
+                state_traj_bxtxd = self._convert_from_LSTMStateTuple(
+                    state_traj)
+            else:
+                state_traj_bxtxd = state_traj
+
+        n_inits, n_dims = np.shape(xstar)
+
+        fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT),
+                         tight_layout=True)
+        if n_dims >= 3:
+            pca = PCA(n_components=3)
+
+            if state_traj is not None:
+                [n_batch, n_time, n_dims] = state_traj_bxtxd.shape
+                state_traj_btxd = np.reshape(state_traj_bxtxd,
+                    (n_batch*n_time, n_dims))
+                pca.fit(state_traj_btxd)
+            else:
+                pca.fit(xstar)
+
+            ax = fig.add_subplot(111, projection='3d')
+            ax.set_xlabel('PC 1', fontweight=FONT_WEIGHT)
+            ax.set_ylabel('PC 2', fontweight=FONT_WEIGHT)
+            ax.set_zlabel('PC 3', fontweight=FONT_WEIGHT)
+        else:
+            # For 1D or 0D networks (i.e., never)
+            pca = None
+            ax = fig.add_subplot(111)
+            ax.xlabel('Hidden 1', fontweight=FONT_WEIGHT)
+            if n_dims == 2:
+                ax.ylabel('Hidden 2', fontweight=FONT_WEIGHT)
+
+        if state_traj is not None:
+            if plot_batch_idx is None:
+                n_batch = state_traj_bxtxd.shape[0]
+                plot_batch_idx = range(n_batch)
+
+            for batch_idx in plot_batch_idx:
+                x_idx = state_traj_bxtxd[batch_idx]
+
+                if n_dims >= 3:
+                    z_idx = pca.transform(x_idx)
+                else:
+                    z_idx = x_idx
+                self._plot_123d(ax, z_idx, color='b', linewidth=0.2)
+
+        for init_idx in range(n_inits):
+            self._plot_fixed_point(
+                ax,
+                xstar[init_idx:(init_idx+1)],
+                J_xstar[init_idx],
+                pca,
+                scale=0.5)
+
+        plt.ion()
+        plt.show()
+        plt.pause(1e-10)
 
     def _run_joint_optimization(self):
         '''Finds multiple fixed points via a joint optimization over multiple
@@ -714,113 +907,6 @@ class FixedPointFinder(object):
         J_np = self.session.run(J_tf)
 
         return J_np
-
-    def print_summary(self, unique=True):
-        '''Prints a summary of the fixed-point-finding optimization.
-
-        Args:
-            unique (optional): A bool specifying whether to only print a
-            summary relating to the unique fixed points identified. If False,
-            the summary will reflect all fixed points identified from all
-            initial_states.
-        '''
-
-        if unique:
-            unique_str = 'unique_'
-        else:
-            unique_str = ''
-
-        print('\nThe q function at the fixed points:')
-        print(getattr(self, unique_str + 'qstar'))
-
-        print('\nChange in the q function from the final iteration \
-              of each optimization:')
-        print(getattr(self, unique_str + 'dq'))
-
-        print('\nNumber of iterations completed for each optimization:')
-        print(getattr(self, unique_str + 'n_iters'))
-
-        print('\nThe fixed points:')
-        print(getattr(self, unique_str + 'xstar'))
-
-        print('\nThe fixed points after one state transition:')
-        print(getattr(self, unique_str + 'F_xstar'))
-        print('(these should be very close to the fixed points)')
-
-        if unique:
-            print('\nThe Jacobians at the fixed points:')
-            print(self.unique_J_xstar)
-
-    def plot_summary(self, state_trajectories=None):
-        '''Plots a visualization and analysis of the unique fixed points.
-
-        1) Finds a low-dimensional subspace for visualization via PCA over the
-        unique fixed points. This subspace is 3-dimensional if the RNN state
-        dimensionality is >= 3.
-
-        2) Plots the PCA representation of the stable unique fixed points as
-        black dots.
-
-        3) Plots the PCA representation of the unstable unique fixed points as
-        red dots.
-
-        Args:
-            state_trajectories (optional): [n_batch x n_time x n_dims] numpy
-            array containing example RNN state trajectories include in the
-            plot.
-
-        Returns:
-            None.
-        '''
-        xstar = self.unique_xstar
-        J_xstar = self.unique_J_xstar
-
-        n_inits, n_dims = np.shape(xstar)
-        fig = plt.figure()
-
-        if n_dims >= 3:
-            pca = PCA(n_components=3)
-            pca.fit(xstar)
-            ax = fig.add_subplot(111, projection='3d')
-            ax.set_xlabel('PC 1')
-            ax.set_ylabel('PC 2')
-            ax.set_zlabel('PC 3')
-        else:
-            # For 1D or 0D networks (i.e., never)
-            pca = None
-            ax = fig.add_subplot(111)
-            ax.xlabel('Hidden 1')
-            if n_dims == 2:
-                ax.ylabel('Hidden 2')
-
-        if state_trajectories is not None:
-            # Use LSTMTools here
-            if self.is_lstm:
-                state_trajectories = self._convert_from_LSTMStateTuple(
-                    state_trajectories)
-
-            n_batch = state_trajectories.shape[0]
-
-            for batch_idx in range(n_batch):
-                x_idx = state_trajectories[batch_idx]
-
-                if n_dims >= 3:
-                    z_idx = pca.transform(x_idx)
-                else:
-                    z_idx = x_idx
-                self._plot_123d(ax, z_idx, color='b', linewidth=0.2)
-
-        for init_idx in range(n_inits):
-            self._plot_fixed_point(
-                ax,
-                xstar[init_idx:(init_idx+1)],
-                J_xstar[init_idx],
-                pca,
-                scale=0.5)
-
-        plt.ion()
-        plt.show()
-        plt.pause(1e-10)
 
     @staticmethod
     def _plot_fixed_point(ax, xstar, J, pca, scale=1.0, n_modes=3):

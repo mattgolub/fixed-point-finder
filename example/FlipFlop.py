@@ -125,7 +125,7 @@ class FlipFlop(RecurrentWhisperer):
         '''
         return {
             'log_dir': '/tmp/flipflop_logs/',
-            'n_trials_plot': 4,
+            'n_trials_plot': 1,
             }
 
     def _setup_model(self):
@@ -355,7 +355,10 @@ class FlipFlop(RecurrentWhisperer):
 
     def _setup_visualization(self):
         '''See docstring in RecurrentWhisperer.'''
-        self.fig = plt.figure()
+        FIG_WIDTH = 6 # inches
+        FIX_HEIGHT = 3 # inches
+        self.fig = plt.figure(figsize=(FIG_WIDTH, FIX_HEIGHT),
+                              tight_layout=True)
 
     def _update_visualization(self, train_data=None, valid_data=None):
         '''See docstring in RecurrentWhisperer.'''
@@ -372,32 +375,77 @@ class FlipFlop(RecurrentWhisperer):
         Returns:
             None.
         '''
+        hps = self.hps
+        n_batch = self.hps.data_hps['n_batch']
+        n_plot = np.min([hps.n_trials_plot, n_batch])
+
         fig = plt.figure(self.fig.number)
         plt.clf()
 
-        predictions = self.predict(data)
-
         inputs = data['inputs']
         output = data['output']
+        predictions = self.predict(data)
         pred_output = predictions['output']
-
-        [n_batch, n_time, n_bits] = np.shape(inputs)
-        n_plot = np.min([self.hps.n_trials_plot, n_batch])
 
         for trial_idx in range(n_plot):
             ax = plt.subplot(n_plot, 1, trial_idx+1)
-            for bit_idx in range(n_bits):
-                vertical_offset = 2.5*bit_idx
-                ax.plot(vertical_offset + inputs[trial_idx, :, bit_idx],
-                    color='purple')
-                ax.plot(vertical_offset + output[trial_idx, :, bit_idx],
-                    color='green')
-                ax.plot(vertical_offset + pred_output[trial_idx, :, bit_idx],
-                    color='cyan', linestyle='--')
-            plt.yticks([])
+            if n_plot == 1:
+                plt.title('Example trial', fontweight='bold')
+            else:
+                plt.title('Example trial %d' % (trial_idx + 1),
+                          fontweight='bold')
+
+            self._plot_single_trial(
+                inputs[trial_idx, :, :],
+                output[trial_idx, :, :],
+                pred_output[trial_idx, :, :])
+
+            # Only plot x-axis ticks and labels on the bottom subplot
             if trial_idx < (n_plot-1):
                 plt.xticks([])
+            else:
+                plt.xlabel('Timestep', fontweight='bold')
 
         plt.ion()
         plt.show()
         plt.pause(1e-10)
+
+    @staticmethod
+    def _plot_single_trial(input_txd, output_txd, pred_output_txd):
+
+        VERTICAL_SPACING = 2.5
+        [n_time, n_bits] = input_txd.shape
+        tt = range(n_time)
+
+        y_ticks = [VERTICAL_SPACING*bit_idx for bit_idx in range(n_bits)]
+        y_tick_labels = \
+            ['Bit %d' % (n_bits-bit_idx) for bit_idx in range(n_bits)]
+
+        plt.yticks(y_ticks, y_tick_labels, fontweight='bold')
+        for bit_idx in range(n_bits):
+            vertical_offset = VERTICAL_SPACING*bit_idx
+
+            # Input pulses
+            plt.fill_between(
+                tt,
+                vertical_offset + input_txd[:, bit_idx],
+                vertical_offset,
+                step='pre',
+                color='gray')
+
+            # Correct outputs
+            plt.step(
+                tt,
+                vertical_offset + output_txd[:, bit_idx],
+                linewidth=2,
+                color='green')
+
+            # RNN outputs
+            plt.step(
+                tt,
+                vertical_offset + pred_output_txd[:, bit_idx],
+                color='purple',
+                linewidth=1.5,
+                linestyle='--')
+
+        plt.xlim(-1, n_time)
