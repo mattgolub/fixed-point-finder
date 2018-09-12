@@ -185,7 +185,27 @@ class FlipFlop(RecurrentWhisperer):
         pass
 
     def _train_batch(self, batch_data):
-        '''See docstring in RecurrentWhisperer.'''
+        '''Performs a training step over a single batch of data.
+
+        Args:
+            batch_data: dict containing one training batch of data. Contains
+            the following key/value pairs:
+
+                'inputs': [n_batch x n_time x n_bits] numpy array specifying
+                the inputs to the RNN.
+
+                'outputs': [n_batch x n_time x n_bits] numpy array specifying
+                the correct output responses to the 'inputs.'
+
+        Returns:
+            summary: dict containing the following summary key/value pairs
+            from the training step:
+
+                'loss': scalar float evalutaion of the loss function over the
+                data batch.
+
+                'grad_global_norm': scalar float evaluation of the norm of the gradient of the loss function with respect to all trainable variables, taken over the data batch.
+        '''
 
         ops_to_eval = [self.train_op,
             self.grad_global_norm,
@@ -220,7 +240,31 @@ class FlipFlop(RecurrentWhisperer):
         return summary
 
     def predict(self, batch_data, do_predict_full_LSTM_state=False):
-        '''See docstring in RecurrentWhisperer.'''
+        '''Runs the RNN given its inputs.
+
+        Args:
+            batch_data:
+                dict containing the key 'inputs': [n_batch x n_time x n_bits]
+                numpy array specifying the inputs to the RNN.
+
+            do_predict_full_LSTM_state (optional): bool indicating, if the RNN
+            is an LSTM, whether to return the concatenated hidden and cell
+            states (True) or simply the hidden states (False). Default: False.
+
+        Returns:
+            predictions: dict containing the following key/value pairs:
+
+                'state': [n_batch x n_time x n_states] numpy array containing
+                the activations of the RNN units in response to the inputs.
+                Here, n_states is the dimensionality of the hidden state,
+                which, depending on the RNN architecture and
+                do_predict_full_LSTM_state, may or may not include LSTM cell
+                states.
+
+                'output': [n_batch x n_time x n_bits] numpy array containing
+                the readouts from the RNN.
+
+        '''
 
         if do_predict_full_LSTM_state:
             return self._predict_with_LSTM_cell_states(batch_data)
@@ -238,12 +282,19 @@ class FlipFlop(RecurrentWhisperer):
             return predictions
 
     def _predict_with_LSTM_cell_states(self, batch_data):
-        # To do: write docstring
-        # To do: replace with call to RNNTools
+        '''Runs the RNN given its inputs.
 
-        '''The following is added for execution only when LSTM predictions are
+        The following is added for execution only when LSTM predictions are
         needed for both the hidden and cell states. Tensorflow does not make
-        it easy to access the cell states via dynamic_rnn.'''
+        it easy to access the cell states via dynamic_rnn.
+
+        Args:
+            batch_data: as specified by predict.
+
+        Returns:
+            predictions: as specified by predict.
+
+        '''
 
         hps = self.hps
         if hps.rnn_type != 'lstm':
