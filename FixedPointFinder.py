@@ -424,8 +424,13 @@ class FixedPointFinder(object):
 
             ax = fig.add_subplot(111, projection='3d')
             ax.set_xlabel('PC 1', fontweight=FONT_WEIGHT)
-            ax.set_ylabel('PC 2', fontweight=FONT_WEIGHT)
             ax.set_zlabel('PC 3', fontweight=FONT_WEIGHT)
+            ax.set_ylabel('PC 2', fontweight=FONT_WEIGHT)
+
+            # For generating figure in paper.md
+            # ax.set_xticks([-2, -1, 0, 1, 2])
+            # ax.set_yticks([-1, 0, 1])
+            # ax.set_zticks([-1, 0, 1])
         else:
             # For 1D or 0D networks (i.e., never)
             pca = None

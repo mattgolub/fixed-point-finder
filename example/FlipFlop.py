@@ -388,7 +388,9 @@ class FlipFlop(RecurrentWhisperer):
         predictions = self.predict(data)
         pred_output = predictions['output']
 
-        if max_n_time is not None:
+        if max_n_time is None:
+            max_n_time = n_time
+        else:
             max_n_time = np.min([n_time, max_n_time])
             time_idx = range(max_n_time)
 
@@ -428,6 +430,7 @@ class FlipFlop(RecurrentWhisperer):
 
         plt.yticks(y_ticks, y_tick_labels, fontweight='bold')
         for bit_idx in range(n_bits):
+
             vertical_offset = VERTICAL_SPACING*bit_idx
 
             # Input pulses
@@ -435,22 +438,25 @@ class FlipFlop(RecurrentWhisperer):
                 tt,
                 vertical_offset + input_txd[:, bit_idx],
                 vertical_offset,
-                step='pre',
+                step='mid',
                 color='gray')
 
             # Correct outputs
             plt.step(
                 tt,
                 vertical_offset + output_txd[:, bit_idx],
+                where='mid',
                 linewidth=2,
-                color='green')
+                color='cyan')
 
             # RNN outputs
             plt.step(
                 tt,
                 vertical_offset + pred_output_txd[:, bit_idx],
+                where='mid',
                 color='purple',
                 linewidth=1.5,
                 linestyle='--')
 
         plt.xlim(-1, n_time)
+

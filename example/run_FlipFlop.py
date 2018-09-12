@@ -96,7 +96,7 @@ fp_dict = fpf.find_fixed_points(initial_states, inputs)
 
 # Visualize identified fixed points with overlaid RNN state trajectories
 # All visualized in the 3D PCA space fit the the example RNN states.
-fpf.plot_summary(example_predictions['state'], range(3))
+fpf.plot_summary(example_predictions['state'], range(5))
 
 print('Entering debug mode to allow interaction with objects and figures.')
 pdb.set_trace()
