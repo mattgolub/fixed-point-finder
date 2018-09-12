@@ -390,8 +390,8 @@ class FlipFlop(RecurrentWhisperer):
         # Update inputs (zero-out random start holds) & compute output
         for trial_idx in range(n_batch):
             for bit_idx in range(n_bits):
-                _input = np.squeeze(inputs[trial_idx, :, bit_idx])
-                t_flip = np.where(_input != 0)
+                input_ = np.squeeze(inputs[trial_idx, :, bit_idx])
+                t_flip = np.where(input_ != 0)
                 for flip_idx in range(np.size(t_flip)):
                     # Get the time of the next flip
                     t_flip_i = t_flip[0][flip_idx]
@@ -443,7 +443,7 @@ class FlipFlop(RecurrentWhisperer):
             max_n_time = n_time
         else:
             max_n_time = np.min([n_time, max_n_time])
-            time_idx = range(max_n_time)
+        time_idx = range(max_n_time)
 
         for trial_idx in range(n_plot):
             ax = plt.subplot(n_plot, 1, trial_idx+1)
