@@ -48,7 +48,7 @@ ff.train()
 # Get example state trajectories from the network
 # Visualize inputs, outputs, and RNN predictions from example trials
 example_trials = ff.generate_flipflop_trials()
-ff.plot_trials(example_trials)
+ff.plot_trials(example_trials, max_n_time=50)
 
 # *****************************************************************************
 # STEP 2: Find, analyze, and visualize the fixed points of the trained RNN ****
@@ -96,7 +96,7 @@ fp_dict = fpf.find_fixed_points(initial_states, inputs)
 
 # Visualize identified fixed points with overlaid RNN state trajectories
 # All visualized in the 3D PCA space fit the the example RNN states.
-fpf.plot_summary(example_predictions['state'], range(5))
+fpf.plot_summary(example_predictions['state'], range(3))
 
 print('Entering debug mode to allow interaction with objects and figures.')
 pdb.set_trace()

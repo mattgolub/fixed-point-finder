@@ -365,7 +365,7 @@ class FlipFlop(RecurrentWhisperer):
         data = self.generate_flipflop_trials()
         self.plot_trials(data)
 
-    def plot_trials(self, data):
+    def plot_trials(self, data, max_n_time=None):
         '''Plots example trials, complete with input pulses, correct outputs,
         and RNN-predicted outputs.
 
@@ -377,6 +377,7 @@ class FlipFlop(RecurrentWhisperer):
         '''
         hps = self.hps
         n_batch = self.hps.data_hps['n_batch']
+        n_time = self.hps.data_hps['n_time']
         n_plot = np.min([hps.n_trials_plot, n_batch])
 
         fig = plt.figure(self.fig.number)
@@ -387,6 +388,10 @@ class FlipFlop(RecurrentWhisperer):
         predictions = self.predict(data)
         pred_output = predictions['output']
 
+        if max_n_time is not None:
+            max_n_time = np.min([n_time, max_n_time])
+            time_idx = range(max_n_time)
+
         for trial_idx in range(n_plot):
             ax = plt.subplot(n_plot, 1, trial_idx+1)
             if n_plot == 1:
@@ -396,9 +401,9 @@ class FlipFlop(RecurrentWhisperer):
                           fontweight='bold')
 
             self._plot_single_trial(
-                inputs[trial_idx, :, :],
-                output[trial_idx, :, :],
-                pred_output[trial_idx, :, :])
+                inputs[trial_idx, time_idx, :],
+                output[trial_idx, time_idx, :],
+                pred_output[trial_idx, time_idx, :])
 
             # Only plot x-axis ticks and labels on the bottom subplot
             if trial_idx < (n_plot-1):

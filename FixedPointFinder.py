@@ -350,7 +350,10 @@ class FixedPointFinder(object):
             print('\nThe Jacobians at the fixed points:')
             print(self.unique_J_xstar)
 
-    def plot_summary(self, state_traj=None, plot_batch_idx=None):
+    def plot_summary(self,
+                     state_traj=None,
+                     plot_batch_idx=None,
+                     mode_scale=0.25):
         '''Plots a visualization and analysis of the unique fixed points.
 
         1) Finds a low-dimensional subspace for visualization via PCA. If
@@ -365,7 +368,10 @@ class FixedPointFinder(object):
         3) Plots the PCA representation of the unstable unique fixed points as
         red dots.
 
-        4) (optional) Plots example RNN state trajectories as blue lines.
+        4) Plots the PCA representation of the modes of the Jacobian at each
+        fixed point. By default, only unstable modes are plotted.
+
+        5) (optional) Plots example RNN state trajectories as blue lines.
 
         Args:
             state_traj (optional): [n_batch x n_time x n_dims] numpy
@@ -376,6 +382,12 @@ class FixedPointFinder(object):
             plot_batch_idx (optional): Indices specifying which trials in
             state_traj to plot on top of the fixed points. Default: plot all
             trials.
+
+            mode_scale (optional): Non-negative float specifying the scaling
+            of the plotted eigenmodes. A value of 1.0 results in each mode
+            plotted as a set of diametrically opposed line segments
+            originating at a fixed point, with each segment's length specified
+            by the magnitude of the corresponding eigenvalue.
 
         Returns:
             None.
@@ -442,7 +454,7 @@ class FixedPointFinder(object):
                 xstar[init_idx:(init_idx+1)],
                 J_xstar[init_idx],
                 pca,
-                scale=0.5)
+                scale=mode_scale)
 
         plt.ion()
         plt.show()
@@ -909,7 +921,8 @@ class FixedPointFinder(object):
         return J_np
 
     @staticmethod
-    def _plot_fixed_point(ax, xstar, J, pca, scale=1.0, n_modes=3):
+    def _plot_fixed_point(ax, xstar, J, pca,
+        scale=1.0, max_n_modes=3, do_plot_stable_modes=False):
         '''Plots a single fixed point and its dominant eigenmodes.
 
         Args:
@@ -929,7 +942,9 @@ class FixedPointFinder(object):
             (<1) lines representing eigenmodes of the Jacobian. Default: 1.0 (
             unity).
 
-            n_modes (optional): Number of eigenmodes to plot. Default: 3.
+            max_n_modes (optional): Maximum number of eigenmodes to plot. Default: 3.
+
+            do_plot_stable_modes (optional): bool indicating whether or not to plot lines representing stable modes (i.e., eigenvectors of the Jacobian whose eigenvalue magnitude is less than one).
 
         Returns:
             None.
@@ -938,37 +953,39 @@ class FixedPointFinder(object):
         e_vals, e_vecs = np.linalg.eig(J)
         sorted_e_val_idx = np.argsort(np.abs(e_vals))
 
-        if n_modes > len(e_vals):
-            n_modes = e_vals
+        if max_n_modes > len(e_vals):
+            max_n_modes = e_vals
 
-        for mode_idx in range(n_modes):
-            idx = sorted_e_val_idx[-(mode_idx+1)] # -[1, 2, ..., n_modes]
+        for mode_idx in range(max_n_modes):
+            idx = sorted_e_val_idx[-(mode_idx+1)] # -[1, 2, ..., max_n_modes]
 
             # Magnitude of complex eigenvalue
             e_val_mag = np.abs(e_vals[idx])
 
-            # Already real. Cast to avoid warning.
-            e_vec = np.real(e_vecs[:,idx])
+            if e_val_mag > 1.0 or do_plot_stable_modes:
 
-            # [1 x d] numpy arrays
-            xstar_plus = xstar + scale*e_val_mag*e_vec
-            xstar_minus = xstar - scale*e_val_mag*e_vec
+                # Already real. Cast to avoid warning.
+                e_vec = np.real(e_vecs[:,idx])
 
-            # [3 x d] numpy array
-            xstar_mode = np.vstack((xstar_minus, xstar, xstar_plus))
+                # [1 x d] numpy arrays
+                xstar_plus = xstar + scale*e_val_mag*e_vec
+                xstar_minus = xstar - scale*e_val_mag*e_vec
 
-            if e_val_mag < 1.0:
-                color = 'k'
-            else:
-                color = 'r'
+                # [3 x d] numpy array
+                xstar_mode = np.vstack((xstar_minus, xstar, xstar_plus))
 
-            if n_dims >= 3:
-                # [3 x 3] numpy array
-                zstar_mode = pca.transform(xstar_mode)
-            else:
-                zstar_mode = x_star_mode
+                if e_val_mag < 1.0:
+                    color = 'k'
+                else:
+                    color = 'r'
 
-            FixedPointFinder._plot_123d(ax, zstar_mode, color=color)
+                if n_dims >= 3:
+                    # [3 x 3] numpy array
+                    zstar_mode = pca.transform(xstar_mode)
+                else:
+                    zstar_mode = x_star_mode
+
+                FixedPointFinder._plot_123d(ax, zstar_mode, color=color)
 
         is_stable = all(np.abs(e_vals) < 1.0)
         if is_stable:
