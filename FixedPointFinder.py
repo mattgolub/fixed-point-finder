@@ -353,6 +353,8 @@ class FixedPointFinder(object):
     def plot_summary(self,
                      state_traj=None,
                      plot_batch_idx=None,
+                     plot_start_time=0,
+                     plot_stop_time=None,
                      mode_scale=0.25):
         '''Plots a visualization and analysis of the unique fixed points.
 
@@ -383,6 +385,14 @@ class FixedPointFinder(object):
             state_traj to plot on top of the fixed points. Default: plot all
             trials.
 
+            plot_start_time (optional): int specifying the first timestep to
+            plot in the example trials of state_traj. Default: 0.
+
+            plot_stop_time (optional): int specifying the last timestep to
+            plot in the example trials of stat_traj. Default: n_time.
+
+            stop_time (optional):
+
             mode_scale (optional): Non-negative float specifying the scaling
             of the plotted eigenmodes. A value of 1.0 results in each mode
             plotted as a set of diametrically opposed line segments
@@ -407,6 +417,19 @@ class FixedPointFinder(object):
             else:
                 state_traj_bxtxd = state_traj
 
+            [n_batch, n_time, n_dims] = state_traj_bxtxd.shape
+
+            # Ensure plot_start_time >= 0
+            plot_start_time = np.max([plot_start_time, 0])
+
+            if plot_stop_time is None:
+                plot_stop_time = n_time
+            else:
+                # Ensure plot_stop_time <= n_time
+                plot_stop_time = np.min([plot_stop_time, n_time])
+
+            plot_time_idx = range(plot_start_time, plot_stop_time)
+
         n_inits, n_dims = np.shape(xstar)
 
         fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT),
@@ -415,7 +438,6 @@ class FixedPointFinder(object):
             pca = PCA(n_components=3)
 
             if state_traj is not None:
-                [n_batch, n_time, n_dims] = state_traj_bxtxd.shape
                 state_traj_btxd = np.reshape(state_traj_bxtxd,
                     (n_batch*n_time, n_dims))
                 pca.fit(state_traj_btxd)
@@ -428,9 +450,9 @@ class FixedPointFinder(object):
             ax.set_ylabel('PC 2', fontweight=FONT_WEIGHT)
 
             # For generating figure in paper.md
-            # ax.set_xticks([-2, -1, 0, 1, 2])
-            # ax.set_yticks([-1, 0, 1])
-            # ax.set_zticks([-1, 0, 1])
+            ax.set_xticks([-2, -1, 0, 1, 2])
+            ax.set_yticks([-1, 0, 1])
+            ax.set_zticks([-1, 0, 1])
         else:
             # For 1D or 0D networks (i.e., never)
             pca = None
@@ -441,16 +463,15 @@ class FixedPointFinder(object):
 
         if state_traj is not None:
             if plot_batch_idx is None:
-                n_batch = state_traj_bxtxd.shape[0]
                 plot_batch_idx = range(n_batch)
 
             for batch_idx in plot_batch_idx:
                 x_idx = state_traj_bxtxd[batch_idx]
 
                 if n_dims >= 3:
-                    z_idx = pca.transform(x_idx)
+                    z_idx = pca.transform(x_idx[plot_time_idx, :])
                 else:
-                    z_idx = x_idx
+                    z_idx = x_idx[plot_time_idx, :]
                 self._plot_123d(ax, z_idx, color='b', linewidth=0.2)
 
         for init_idx in range(n_inits):

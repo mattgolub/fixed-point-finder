@@ -31,12 +31,12 @@ alr_hps = {'initial_rate': 0.1}
 hps = {
     'rnn_type': 'lstm',
     'n_hidden': 16,
-    'min_loss': 5e-4,
+    'min_loss': 1e-4,
     'min_learning_rate': 1e-5,
     'log_dir': './logs/',
     'data_hps': {
-        'n_batch': 128,
-        'n_time': 256,
+        'n_batch': 512,
+        'n_time': 64,
         'n_bits': 3,
         'p_flip': 0.5},
     'alr_hps': alr_hps
@@ -48,7 +48,7 @@ ff.train()
 # Get example state trajectories from the network
 # Visualize inputs, outputs, and RNN predictions from example trials
 example_trials = ff.generate_flipflop_trials()
-ff.plot_trials(example_trials, max_n_time=50)
+ff.plot_trials(example_trials)
 
 # *****************************************************************************
 # STEP 2: Find, analyze, and visualize the fixed points of the trained RNN ****
@@ -96,7 +96,9 @@ fp_dict = fpf.find_fixed_points(initial_states, inputs)
 
 # Visualize identified fixed points with overlaid RNN state trajectories
 # All visualized in the 3D PCA space fit the the example RNN states.
-fpf.plot_summary(example_predictions['state'], range(5))
+fpf.plot_summary(example_predictions['state'],
+                 plot_batch_idx=range(30),
+                 plot_start_time=10)
 
 print('Entering debug mode to allow interaction with objects and figures.')
 pdb.set_trace()

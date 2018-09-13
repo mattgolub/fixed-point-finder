@@ -416,12 +416,18 @@ class FlipFlop(RecurrentWhisperer):
         data = self.generate_flipflop_trials()
         self.plot_trials(data)
 
-    def plot_trials(self, data, max_n_time=None):
+    def plot_trials(self, data, start_time=0, stop_time=None):
         '''Plots example trials, complete with input pulses, correct outputs,
         and RNN-predicted outputs.
 
         Args:
             data: dict as returned by generate_flipflop_trials.
+
+            start_time (optional): int specifying the first timestep to plot.
+            Default: 0.
+
+            stop_time (optional): int specifying the last timestep to plot.
+            Default: n_time.
 
         Returns:
             None.
@@ -439,11 +445,10 @@ class FlipFlop(RecurrentWhisperer):
         predictions = self.predict(data)
         pred_output = predictions['output']
 
-        if max_n_time is None:
-            max_n_time = n_time
-        else:
-            max_n_time = np.min([n_time, max_n_time])
-        time_idx = range(max_n_time)
+        if stop_time is None:
+            stop_time = n_time
+
+        time_idx = range(start_time, stop_time)
 
         for trial_idx in range(n_plot):
             ax = plt.subplot(n_plot, 1, trial_idx+1)
