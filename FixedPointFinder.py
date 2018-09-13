@@ -31,7 +31,7 @@ class FixedPointFinder(object):
         method='joint',
         do_rerun_outliers=True,
         outlier_q_scale=1000,
-        tol_unique=1e-5,
+        tol_unique=1e-3,
         do_compute_jacobians=True,
         verbose=False,
         alr_hps=dict(),
@@ -72,9 +72,10 @@ class FixedPointFinder(object):
 
             tol_unique (optional): A positive scalar specifying the numerical
             precision required to label two fixed points as being unique from
-            one another, as measured by euclidean distance between the two
-            fixed points. This tolerance is used to discard numerically
-            similar fixed points. Default: 1e-5.
+            one another. Two fixed points will be considered unique if they
+            differ by this amount (or more) along any dimension. This
+            tolerance is used to discard numerically similar fixed points.
+            Default: 1e-3.
 
             do_compute_jacobians (optional): A bool specifying whether or not
             to compute the Jacobian at each fixed point. Default: True.
@@ -323,7 +324,6 @@ class FixedPointFinder(object):
             the summary will reflect all fixed points identified from all
             initial_states.
         '''
-
         if unique:
             unique_str = 'unique_'
         else:
@@ -481,7 +481,6 @@ class FixedPointFinder(object):
             None.
 
         '''
-
         x, F, states, new_states = \
             self._grab_RNN(self.initial_states)
 
@@ -506,7 +505,7 @@ class FixedPointFinder(object):
 
         q = tf.reduce_mean(q_1xn)
 
-        print('Finding fixed points via joint optimization...')
+        print('\nFinding fixed points via joint optimization...')
         self.xstar, self.F_xstar, _, dq, n_iters = \
             self._run_optimization_loop(q, x, F, states, new_states)
 
@@ -545,7 +544,7 @@ class FixedPointFinder(object):
         # Allocate memory for storing results *********************************
         # *********************************************************************
 
-        print('Finding fixed points via sequential optimizations...')
+        print('\nFinding fixed points via sequential optimizations...')
 
         n_dims = self.n_dims
         n_inits = self.n_inits
@@ -664,7 +663,6 @@ class FixedPointFinder(object):
             new_states: Contains the same data as in F, but formatted to
             interface with self.rnn_cell
         '''
-
         if self.is_lstm:
             # [1 x (2*n_dims)]
             c_h_init = self._convert_from_LSTMStateTuple(initial_states)
@@ -750,8 +748,7 @@ class FixedPointFinder(object):
 
             iter_count: An int specifying the number of iterations completed
             before the optimization terminated.
-            '''
-
+        '''
         def print_update(iter_count, q, dq, lr):
             print('\tIter: %d, q = %.3e, diff(q) = %.3e, learning rate = %.3e.'
                 % (iter_count, q, dq, lr))
@@ -858,7 +855,6 @@ class FixedPointFinder(object):
             None.
 
         '''
-
         def unique_rows(x, approx_tol):
             # Quick and dirty. Can update using pdist if necessary
             d = int(np.round(np.max([0 -np.log10(approx_tol)])))
@@ -900,7 +896,6 @@ class FixedPointFinder(object):
         Returns:
             None.
         '''
-
         print('Computing Jacobians at unique %d fixed points' % self.n_unique)
 
         self.unique_J_xstar = self._compute_multiple_jacobians_np(
