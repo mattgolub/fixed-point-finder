@@ -36,7 +36,7 @@ To run the example, descend into the example directory: `fixed-point-finder/exam
 1. Start by building, and if desired, training an RNN. ```FixedPointFinder``` works with any arbitrary RNN that conforms to Tensorflow's `RNNCell` API.
 2. Build a ```FixedPointFinder``` object:
   ```python
-  >>> fpf = FixedPointFinder(your_rnn_cell, tf_session. **hyperparams)
+  >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **hyperparams)
   ```
   using `your_rnn_cell`, the `RNNCell` that specifies the single-timestep transitions in your RNN, `tf_session`, the Tensorflow session in which your model has been instantiated, and `hyperparams`, a python dict of optional hyperparameters for the fixed-point optimizations.
 3. Specify the `initial_states` from which you'd like to initialize the local optimizations implemented by ```FixedPointFinder```. These states should conform to type expected by `your_rnn_cell` (e.g., `LSTMStateTuple` if `your_rnn_cell` is an `LSTMCell`).
