@@ -22,7 +22,7 @@ affiliations:
    index: 3
  - name: Work done while at Stanford University
    index: 4  
-date: 14 September 2018
+date: 17 September 2018
 bibliography: paper.bib
 ---
 
