@@ -18,18 +18,8 @@ To run the included example, you will additionally need:
 ## Installation
 
 1. [Clone or download](https://help.github.com/articles/cloning-a-repository/) this repository into a directory of your choice.
-2. To run the example, you must also clone or download [RecurrentWhisperer](https://github.com/mattgolub/recurrent-whisperer/) into the same directory (do not place recurrent-whisperer/ inside fixed-point-finder/; rather, both directories should share the same parent directory).
+2. To run the example, you must also clone or download [```RecurrentWhisperer```](https://github.com/mattgolub/recurrent-whisperer/) into the same directory (do not place `recurrent-whisperer/` inside `fixed-point-finder/`; rather, both directories should share the same parent directory).
 3. Install the prerequisite packages listed above.
-
-## End-to-end example
-
-Included is an end-to-end example that 1) trains an LSTM RNN to implement a 3-bit memory system (aka the 'flip-flop' task), 2) finds the fixed points of the trained RNN, and 3) visualizes and analyzes the fixed points identified. Running the example requires only a few minutes on a modern machine.
-
-To run the example, descend into the example directory: `fixed-point-finder/example/` and execute:
-
-```bash
->>> python run_FlipFlop.py
-```
 
 ## General Usage
 
@@ -51,3 +41,22 @@ The fixed points identified, along with the Jacobian of your RNN state transitio
 >>> fpf.plot_summary()
 ```
 You can also visualize these fixed points amongst state trajectories from your RNN (see the docstring for `FixedPointFinder.plot_summary()` and the example in `fixed-point-finder/example/run_FlipFlop.py`).
+
+## Example
+
+``FixedPointFinder`` includes an end-to-end example that trains a Tensorflow RNN to solve a task and then identifies and visualizes the fixed points of the trained RNN. To run the example, descend into the example directory: `fixed-point-finder/example/` and execute:
+
+```bash
+>>> python run_FlipFlop.py
+```
+
+The task is the "flip-flop" task previously described in @SussilloBarak2013. Briefly, the task is to implement a 3-bit binary memory, in which each of 3 input channels delivers signed transient pulses (-1 or +1) to a corresponding bit of the memory, and an input pulse flips the state of that memory bit (also -1 or +1) whenever a pulse's sign is opposite of the current state of the bit. The example trains a 16-unit LSTM RNN to solve this task (Fig. 1). Once the RNN is trained, the example uses ``FixedPointFinder`` to identify and characterize the trained RNN's fixed points. Finally, the example produces a visualization of these results (Fig. 2). In addition to demonstrating a working use of ``FixedPointFinder``, this example provides a testbed for experimenting with different RNN architectures (e.g., numbers of recurrent units, LSTMs vs. GRUs vs. vanilla RNNs) and characterizing how these lower-level model design choices manifest in the higher-level dynamical implementation used to solve a task.
+
+---
+![Figure 1](example/task_example.png)
+
+##### Figure 1. Inputs (gray), target outputs (cyan), and outputs of a trained LSTM RNN (purple) from an example trial of the flip-flop task. Signed input pulses (gray) flip the corresponding bit's state (green) whenever an input pulse has the opposite sign of the current bit state (e.g., if gray goes high when green is low). The RNN has been trained to nearly perfectly reproduce the target memory state (purple closely overlaps cyan).
+---
+![Figure 2](example/fixed_points.png)
+
+##### Figure 2. Fixed-point structure of an LSTM RNN trained to solve the flip-flop task. ``FixedPointFinder`` identified 8 stable fixed points (black points), each of which corresponds to a unique state of the 3-bit memory. ``FixedPointFinder`` also identified a number of unstable fixed points (red points) along with their unstable modes (red lines), which mediate the set of state transitions trained into the RNN's dynamics. Here, each unstable fixed point is a "saddle" in the RNN's dynamical flow field, and the corresponding unstable modes indicate the directions that nearby states are repelled from the fixed point. State trajectories from example trials (blue) traverse about these fixed points. All quantities are visualized in the 3-dimensional space determined by the top 3 principal components computed across 128 example trials.
