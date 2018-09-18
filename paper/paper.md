@@ -50,7 +50,7 @@ Fixed-point structure of an LSTM RNN trained to solve the flip-flop task. ``Fixe
 
 # Availability
 
-``FixedPointFinder`` is publicly available under the Apache 2.0 license at https://github.com/mattgolub/fixed-point-finder.
+``FixedPointFinder`` is publicly available under the Apache 2.0 license at <https://github.com/mattgolub/fixed-point-finder>.
 
 # Acknowledgements
 
