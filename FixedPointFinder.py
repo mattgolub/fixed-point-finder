@@ -579,6 +579,7 @@ class FixedPointFinder(object):
 
         self.qstar = np.zeros(n_inits)
         self.dq = np.zeros(n_inits)
+        self.n_iters = np.zeros(n_inits)
 
         for init_idx in range(self.n_inits):
 
