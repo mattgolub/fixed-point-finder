@@ -937,7 +937,7 @@ class FixedPointFinder(object):
 
         '''
         x, F, states, new_states = self._grab_RNN(states_np)
-        J_tf = pfor.batch_jacobian(F, x)
+        J_tf = pfor.batch_jacobian(F, x, use_pfor=False)
         J_np = self.session.run(J_tf)
 
         return J_np
