@@ -15,6 +15,7 @@ import numpy as np
 import numpy.random as npr
 import tensorflow as tf
 from tensorflow.python.ops import parallel_for as pfor
+import absl
 
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
@@ -64,7 +65,7 @@ class FixedPointFinder(object):
             identified as states with large q values relative to the median q
             value across all identified fixed points (i.e., after the initial
             optimization ran to termination). These additional optimizations
-            are run sequentially (even if method=='joint'). Default: True.
+            are run sequentially (even if method=='joint'). Default: False.
 
             outlier_q_scale (optional): A positive float specifying the q
             value for putative outlier fixed points, relative to the median q
@@ -937,7 +938,11 @@ class FixedPointFinder(object):
 
         '''
         x, F, states, new_states = self._grab_RNN(states_np)
-        J_tf = pfor.batch_jacobian(F, x, use_pfor=False)
+        try:
+           J_tf = pfor.batch_jacobian(F, x)
+        except absl.flags._exceptions.UnparsedFlagAccessError:
+           J_tf = pfor.batch_jacobian(F, x, use_pfor=False)
+
         J_np = self.session.run(J_tf)
 
         return J_np
