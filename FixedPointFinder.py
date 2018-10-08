@@ -30,7 +30,7 @@ class FixedPointFinder(object):
         tol=1e-20,
         max_iters=5000,
         method='joint',
-        do_rerun_outliers=True,
+        do_rerun_outliers=False,
         outlier_q_scale=1000,
         tol_unique=1e-3,
         do_compute_jacobians=True,
