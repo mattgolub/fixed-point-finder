@@ -92,7 +92,7 @@ initial_states = fpf.sample_states(example_predictions['state'],
                                    noise_scale=NOISE_SCALE)
 
 # Run the fixed point finder
-fp_dict = fpf.find_fixed_points(initial_states, inputs)
+fpf.find_fixed_points(initial_states, inputs)
 
 # Visualize identified fixed points with overlaid RNN state trajectories
 # All visualized in the 3D PCA space fit the the example RNN states.
