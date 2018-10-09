@@ -11,6 +11,7 @@ from __future__ import division
 from __future__ import print_function
 
 import pdb
+import sys
 import numpy as np
 import numpy.random as npr
 import tensorflow as tf
@@ -21,6 +22,8 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 
+PATH_TO_RECURRENT_WHISPERER = '../../recurrent-whisperer/'
+sys.path.insert(0, PATH_TO_RECURRENT_WHISPERER)
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 
