@@ -1,6 +1,6 @@
 '''
 Tensorflow Utilities
-Supports FixedPointFinder, Version 1.0
+Supports FixedPointFinder
 Written using Python 2.7.12 and TensorFlow 1.10.
 @ Matt Golub, October 2018.
 Please direct correspondence to mgolub@stanford.edu.

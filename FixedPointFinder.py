@@ -1,6 +1,5 @@
 '''
 TensorFlow FixedPointFinder
-Version 1.1.1
 Written using Python 2.7.12 and TensorFlow 1.10.
 @ Matt Golub, September 2018.
 Please direct correspondence to mgolub@stanford.edu.

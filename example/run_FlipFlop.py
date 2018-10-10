@@ -1,6 +1,5 @@
 '''
 run_flipflop.py
-Version 1.0
 Written using Python 2.7.12
 @ Matt Golub, August 2018.
 Please direct correspondence to mgolub@stanford.edu.
