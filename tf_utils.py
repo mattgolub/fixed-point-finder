@@ -81,3 +81,21 @@ def is_tf_object(x):
         tf.Variable, tf.Tensor, tf.placeholder, or any TF op)
     '''
     return tf.is_numeric_tensor(x) or isinstance(x, tf.Variable)
+
+def is_lstm(x):
+    '''Determine whether x is an LSTMCell or any object derived from one.
+
+    Args:
+        x: Any object
+
+    Returns:
+        A bool indicating whether x is an LSTMCell or any object derived from
+        one.
+    '''
+    if isinstance(x, tf.nn.rnn_cell.LSTMCell):
+        return True
+
+    if isinstance(x, tf.nn.rnn_cell.LSTMStateTuple):
+        return True
+
+    return False
