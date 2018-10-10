@@ -1,0 +1,7 @@
+checkpoint
+*ckpt*.index
+*ckpt*data*
+*ckpt*meta
+events.out.tfevents*
+*.pkl
+*.pyc
