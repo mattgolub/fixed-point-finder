@@ -24,9 +24,9 @@ from mpl_toolkits.mplot3d import Axes3D
 
 PATH_TO_RECURRENT_WHISPERER = '../../recurrent-whisperer/'
 sys.path.insert(0, PATH_TO_RECURRENT_WHISPERER)
-import tf_utils
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
+import tf_utils
 
 class FixedPointFinder(object):
 
@@ -906,7 +906,7 @@ class FixedPointFinder(object):
 
         self.unique_qstar = self.qstar[idx]
         self.unique_dq = self.dq[idx]
-        self.n_iters = self.n_iters[idx]
+        self.unique_n_iters = self.n_iters[idx]
         '''In normal operation, Jacobians haven't yet been computed, so don't
         bother indexing into those.'''
 
