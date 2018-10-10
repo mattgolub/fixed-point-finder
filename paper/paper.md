@@ -44,7 +44,7 @@ Here, we introduce ``FixedPointFinder``, an open-source Tensorflow toolbox for f
 
 # Availability
 
-``FixedPointFinder`` is publicly available under the Apache 2.0 license at <https://github.com/mattgolub/fixed-point-finder>.
+``FixedPointFinder`` is publicly available under the [Apache 2.0 license](https://github.com/mattgolub/fixed-point-finder/blob/master/LICENSE) at <https://github.com/mattgolub/fixed-point-finder>.
 
 # Acknowledgements
 

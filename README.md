@@ -60,3 +60,7 @@ The task is the "flip-flop" task previously described in @SussilloBarak2013. Bri
 ![Figure 2](paper/fixed_points.png)
 
 ##### Figure 2. Fixed-point structure of an LSTM RNN trained to solve the flip-flop task. ``FixedPointFinder`` identified 8 stable fixed points (black points), each of which corresponds to a unique state of the 3-bit memory. ``FixedPointFinder`` also identified a number of unstable fixed points (red points) along with their unstable modes (red lines), which mediate the set of state transitions trained into the RNN's dynamics. Here, each unstable fixed point is a "saddle" in the RNN's dynamical flow field, and the corresponding unstable modes indicate the directions that nearby states are repelled from the fixed point. State trajectories from example trials (blue) traverse about these fixed points. All quantities are visualized in the 3-dimensional space determined by the top 3 principal components computed across 128 example trials.
+
+## Contribution Guidelines
+
+Contributions are welcome. Please see the [contribution guidelines](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md).
