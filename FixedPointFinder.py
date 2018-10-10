@@ -24,6 +24,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 PATH_TO_RECURRENT_WHISPERER = '../../recurrent-whisperer/'
 sys.path.insert(0, PATH_TO_RECURRENT_WHISPERER)
+import tf_utils
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 
@@ -173,7 +174,7 @@ class FixedPointFinder(object):
             ValueError if noise_scale is negative.
         '''
         if self.is_lstm:
-            state_traj_bxtxd = FixedPointFinder._convert_from_LSTMStateTuple(
+            state_traj_bxtxd = tf_utils.convert_from_LSTMStateTuple(
                 state_traj)
         else:
             state_traj_bxtxd = state_traj
@@ -197,7 +198,7 @@ class FixedPointFinder(object):
             pass
 
         if self.is_lstm:
-            return FixedPointFinder._convert_to_LSTMStateTuple(states)
+            return tf_utils.convert_to_LSTMStateTuple(states)
         else:
             return states
 
@@ -416,7 +417,7 @@ class FixedPointFinder(object):
         if state_traj is not None:
             # Use LSTMTools here
             if self.is_lstm:
-                state_traj_bxtxd = self._convert_from_LSTMStateTuple(
+                state_traj_bxtxd = tf_utils.convert_from_LSTMStateTuple(
                     state_traj)
             else:
                 state_traj_bxtxd = state_traj
@@ -647,7 +648,7 @@ class FixedPointFinder(object):
 
             initial_state = np.expand_dims(self.xstar[idx],axis=0)
             if self.is_lstm:
-                initial_state = self._convert_to_LSTMStateTuple(
+                initial_state = tf_utils.convert_to_LSTMStateTuple(
                     initial_state)
             xstar, F_xstar, qstar, dq, n_iters = self._run_single_optimization(
                 initial_state)
@@ -691,12 +692,12 @@ class FixedPointFinder(object):
         '''
         if self.is_lstm:
             # [1 x (2*n_dims)]
-            c_h_init = self._convert_from_LSTMStateTuple(initial_states)
+            c_h_init = tf_utils.convert_from_LSTMStateTuple(initial_states)
 
             # [1 x (2*n_dims)]
             x = tf.Variable(c_h_init, dtype=tf.float32)
 
-            states = self._convert_to_LSTMStateTuple(x)
+            states = tf_utils.convert_to_LSTMStateTuple(x)
         else:
             x = tf.Variable(initial_states, dtype=tf.float32)
             states = x
@@ -709,7 +710,7 @@ class FixedPointFinder(object):
 
         if self.is_lstm:
             # [1 x (2*n_dims)]
-            F = self._convert_from_LSTMStateTuple(new_states)
+            F = tf_utils.convert_from_LSTMStateTuple(new_states)
         else:
             F = new_states
 
@@ -896,9 +897,9 @@ class FixedPointFinder(object):
 
         if self.is_lstm:
             self.unique_states = \
-                self._convert_to_LSTMStateTuple(self.unique_xstar)
+                tf_utils.convert_to_LSTMStateTuple(self.unique_xstar)
             self.unique_new_states = \
-                self._convert_to_LSTMStateTuple(self.unique_F_xstar)
+                tf_utils.convert_to_LSTMStateTuple(self.unique_F_xstar)
         else:
             self.unique_states = self.unique_xstar
             self.unique_new_states = self.unique_F_xstar
