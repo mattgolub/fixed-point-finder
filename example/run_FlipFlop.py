@@ -1,7 +1,7 @@
 '''
 run_flipflop.py
 Written using Python 2.7.12
-@ Matt Golub, August 2018.
+@ Matt Golub, October 2018.
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
@@ -17,6 +17,7 @@ import sys
 PATH_TO_FIXED_POINT_FINDER = '../'
 sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
 from FlipFlop import FlipFlop
+from FixedPoints import FixedPoints
 
 # *****************************************************************************
 # STEP 1: Train an RNN to solve the N-bit memory task *************************
@@ -91,13 +92,13 @@ initial_states = fpf.sample_states(example_predictions['state'],
                                    noise_scale=NOISE_SCALE)
 
 # Run the fixed point finder
-fpf.find_fixed_points(initial_states, inputs)
+unique_fps, all_fps = fpf.find_fixed_points(initial_states, inputs)
 
 # Visualize identified fixed points with overlaid RNN state trajectories
 # All visualized in the 3D PCA space fit the the example RNN states.
-fpf.plot_summary(example_predictions['state'],
-                 plot_batch_idx=range(30),
-                 plot_start_time=10)
+unique_fps.plot(example_predictions['state'],
+    plot_batch_idx=range(30),
+    plot_start_time=10)
 
 print('Entering debug mode to allow interaction with objects and figures.')
 pdb.set_trace()
