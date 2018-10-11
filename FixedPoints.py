@@ -222,7 +222,17 @@ class FixedPoints(object):
                                 return_index=True)
             return ux, idx
 
-        unique_xstar, idx = unique_rows(self.xstar, self.tol_unique)
+        pdb.set_trace()
+        if self.xstar is not None:
+            if self.inputs is not None:
+                data = np.concatenate((self.xstar, self.inputs), axis=1)
+            else:
+                data = self.xstar
+        else:
+            raise ValueError('Cannot find unique fixed points because '
+                'self.xstar is None.')
+
+        unique_data, idx = unique_rows(data, self.tol_unique)
 
         return self[idx]
 
