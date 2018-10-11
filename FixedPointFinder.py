@@ -239,9 +239,11 @@ class FixedPointFinder(object):
 
         if self.do_compute_jacobians:
             print('Computing Jacobian at %d '
-                  'unique fixed points.\n' % unique_fps.n)
+                  'unique fixed points...' % unique_fps.n, end='')
             J_xstar = self._compute_multiple_jacobians_np(unique_fps)
             unique_fps.J_xstar = J_xstar
+
+            print('done.\n')
 
         return unique_fps, all_fps
 
