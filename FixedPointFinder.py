@@ -1,7 +1,7 @@
 '''
 TensorFlow FixedPointFinder
 Written using Python 2.7.12 and TensorFlow 1.10.
-@ Matt Golub, September 2018.
+@ Matt Golub, October 2018.
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
@@ -17,12 +17,9 @@ import tensorflow as tf
 from tensorflow.python.ops import parallel_for as pfor
 import absl
 
-from sklearn.decomposition import PCA
-import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-
 PATH_TO_RECURRENT_WHISPERER = '../../recurrent-whisperer/'
 sys.path.insert(0, PATH_TO_RECURRENT_WHISPERER)
+from FixedPoints import FixedPoints
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 import tf_utils
@@ -34,9 +31,10 @@ class FixedPointFinder(object):
         max_iters=5000,
         method='joint',
         do_rerun_outliers=False,
-        outlier_q_scale=1000,
+        outlier_q_scale=10,
         tol_unique=1e-3,
         do_compute_jacobians=True,
+        tf_dtype=tf.float32,
         verbose=False,
         alr_hps=dict(),
         agnc_hps=dict(),
@@ -84,6 +82,10 @@ class FixedPointFinder(object):
             do_compute_jacobians (optional): A bool specifying whether or not
             to compute the Jacobian at each fixed point. Default: True.
 
+            tf_dtype: Data type to use for all TensorFlow ops. The
+            corresponding numpy data type is used for numpy objects and
+            operations.
+
             verbose (optional): A bool specifying whether or not to print
             per-iteration updates during each optimization. Default: False.
 
@@ -105,15 +107,11 @@ class FixedPointFinder(object):
 
         self.rnn_cell = rnn_cell
         self.session = sess
+        self.tf_dtype = tf_dtype
+        self.np_dtype = tf_dtype.as_numpy_dtype
 
         self.is_lstm = isinstance(
             rnn_cell.state_size, tf.nn.rnn_cell.LSTMStateTuple)
-
-        # These class variables are set by find_fixed_points
-        self.initial_states = None
-        self.inputs = None
-        self.n_inits = None
-        self.n_dims = None
 
         # *********************************************************************
         # Optimization hyperparameters ****************************************
@@ -131,21 +129,6 @@ class FixedPointFinder(object):
         self.grad_norm_clip_hps = agnc_hps
         self.adam_optimizer_hps = adam_hps
 
-        ''' These class variables are set either by _run_joint_optimization or
-        _run_sequential_optimizations'''
-        self.xstar = None
-        self.F_xstar = None
-        self.qstar = None
-        self.dq = None
-
-        ''' These class variables are set by _identify_unique_fixed_points and
-        _compute_jacobians_at_unique_fixed_points'''
-        self.unique_xstar = None
-        self.unique_Fxstar = None
-        self.unique_J_xstar = None
-        self.unique_q = None
-        self.unique_dq = None
-
     def sample_states(self, state_traj, n_inits,
                       noise_scale=0.0, rng=npr.RandomState(0)):
         '''Draws random samples from trajectories of the RNN state. Samples
@@ -154,9 +137,9 @@ class FixedPointFinder(object):
         states for fixed point optimizations.
 
         Args:
-            state_traj: [n_batch x n_time x n_dims] numpy array or
-            LSTMStateTuple with .c and .h as [n_batch x n_time x n_dims] numpy
-            arrays. Contains example trajectories of the RNN state.
+            state_traj: [n_batch x n_time x n_states] numpy array or
+            LSTMStateTuple with .c and .h as [n_batch x n_time x n_states]
+            numpy arrays. Contains example trajectories of the RNN state.
 
             n_inits: int specifying the number of sampled states to return.
 
@@ -165,9 +148,9 @@ class FixedPointFinder(object):
             states.
 
         Returns:
-            initial_states: Sampled RNN states as a [n_inits x n_dims] numpy
-            array or as an LSTMStateTuple with .c and .h as [n_inits x n_dims]
-            numpy arrays (type matches than of state_traj).
+            initial_states: Sampled RNN states as a [n_inits x n_states] numpy
+            array or as an LSTMStateTuple with .c and .h as [n_inits x
+            n_states] numpy arrays (type matches than of state_traj).
 
         Raises:
             ValueError if noise_scale is negative.
@@ -205,309 +188,85 @@ class FixedPointFinder(object):
         '''Finds RNN fixed points and the Jacobians at the fixed points.
 
         Args:
-            initial_states: Either an [n_inits x n_dims] numpy array or an
+            initial_states: Either an [n x n_dims] numpy array or an
             LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_dims] numpy arrays. These data specify the initial
+            [n x n_dims] numpy arrays. These data specify the initial
             states of the RNN, from which the optimization will search for
             fixed points. The choice of type must be consistent with state
             type of rnn_cell.
 
-            inputs: A [1 x n_inputs] numpy array specifying a set of constant
-            inputs into the RNN.
+            inputs: Either a [1 x n_inputs] numpy array specifying a set of
+            constant inputs into the RNN to be used for all optimization
+            initializations, or an [n x n_inputs] numpy array specifying
+            potentially different inputs for each initialization.
 
         Returns:
-            None
+            unique_fps: A FixedPoints object containing the set of unique
+            fixed points after optimizing from all initial_states. Two fixed
+            points are considered unique if all absolute elementwise
+            differences are less than tol_unique AND the corresponding inputs
+            are unqiue following the same criteria. See FixedPoints.py for
+            additional detail.
 
-        Raises:
-            ValueError: Unsupported optimization method. Must be either
-            'joint' or 'sequential', but was %s.
-
-        After running, the following class variables contain results of the
-        fixed point finding. The general procedure is to (1) run the fixed
-        point optimization initialized at each provided initial state, (2)
-        identify the unique fixed points, (3) further refine the set of unique
-        fixed points by checking for pathological conditions and running
-        additional optimization iterations as needed, and (4) find the
-        Jacobian of the RNN state transition function at the unique fixed
-        points.
-
-        xstar, F_xstar, qstar, dq, n_iters: Numpy arrays containing results
-        from step 1) above, the optimization from all of the initial_states
-        provided to __init__. Descriptions of the data contained in each of
-        these variables are provided below. For each variable, the first
-        dimension indexes the initialization, e.g., xstar[i, :] corresponds to
-        initial_states[i, :]. Each of these variables has .shape[0] =
-        initial_states.shape[0].
-
-        unique_xstar, unique_F_xstar, unique_J_xstar, unique_qstar, unique_dq,
-        unique_n_iters: Numpy arrays containing the results from (2-4) above.
-        Each of these variables has .shape[0] = n_unique, where n_unique is an
-        int specifying the number of unique fixed points identified
-
-        ***********************************************************************
-
-        xstar: An [n_inits x n_dims] numpy array with row xstar[i, :]
-        specifying an the fixed point identified from initial_states[i, :].
-
-        F_xstar: An [n_inits x n_dims] numpy array with F_xstar[i, :]
-        specifying RNN state after transitioning from the fixed point in xstar[
-        i, :]. If the optimization succeeded (e.g., to 'tol') and identified a
-        stable fixed point, the state should not move substantially from the
-        fixed point (i.e., xstar[i, :] should be very close to F_xstar[i, :]).
-
-        qstar: An [n_inits,] numpy array with qstar[i] containing the
-        optimized objective (1/2)(x-F(x))^T(x-F(x)), where
-        x = xstar[i, :]^T and F is the RNN transition function (with the
-        specified constant inputs).
-
-        dq: An [n_inits,] numpy array with dq[i] containing the absolute
-        difference in the objective function after (i.e., qstar[i]) vs before
-        the final gradient descent step of the optimization of xstar[i, :].
-
-        n_iters: An [n_inits,] numpy array with n_iters[i] as the number of
-        gradient descent iterations completed to yield xstar[i, :].
-
-        ***********************************************************************
-
-        unique_xstar: An [n_unique x n_dims] numpy array, analogous to xstar,
-        but containing only the unique fixed points identified.
-
-        unique_J_xstar: An [n_unique x n_dims x n_dims] numpy array with
-        unique_J_xstar[i, :, :] containing the Jacobian of the RNN state
-        transition function at fixed point unique_xstar[i, :.
-
-        unique_F_xstar: An [n_unique x n_dims] numpy array, analogous to
-        F_xstar, but corresponding only to the unique fixed points identified.
-
-        unique_qstar: An [n_unique,] numpy array, analogous to qstar, but
-        corresponding only to the unique fixed points identified.
-
-        unique_dq: An [n_unique,] numpy array, analogous to dq, but
-        corresponding only to the unique fixed points identified.
-
-        ***********************************************************************
-
-        Note that xstar, F_xstar, unique_xstar, unique_F_xstar and
-        unique_J_xstar are all numpy arrays, regardless of whether that type
-        is consistent with the state type of rnn_cell (i.e., whether or not
-        rnn_cell is an LSTM). This design decision reflects that a Jacobian is
-        most naturally expressed as a single matrix (as opposed to a
-        collection of matrices representing interactions between LSTM hidden
-        and cell states). If one requires state representations as type
-        LSTMStateCell, use _convert_to_LSTMStateTuple(...).
+            all_fps: A FixedPoints object containing the likely redundant set
+            of fixed points (and associated metadata) resulting from ALL
+            initializations in initial_states (i.e., the full set of fixed
+            points before filtering out putative duplicates to yield
+            unique_fps).
         '''
-        self.initial_states = initial_states
-        self.inputs = inputs
+        n = tf_utils.safe_shape(initial_states)[0]
 
-        if self.is_lstm:
-            self.n_inits, self.n_dims = self.initial_states.h.shape
+        if inputs.shape[0] == 1:
+            inputs_nxd = np.tile(inputs, [n, 1]) # safe, even if n == 1.
         else:
-            self.n_inits, self.n_dims = self.initial_states.shape
+            # assumes inputs.shape[0] == n. should check.
+            inputs_nxd = inputs
 
         if self.method == 'sequential':
-            self._run_sequential_optimizations()
+            all_fps = self._run_sequential_optimizations(
+                initial_states, inputs_nxd)
         elif self.method == 'joint':
-            self._run_joint_optimization()
+            all_fps = self._run_joint_optimization(
+                initial_states, inputs_nxd)
         else:
             raise ValueError('Unsupported optimization method. Must be either \
                 \'joint\' or \'sequential\', but was  \'%s\'' % self.method)
 
         if self.do_rerun_outliers:
-            self._run_additional_iterations_on_outliers()
+            all_fps = self._run_additional_iterations_on_outliers(all_fps)
 
-        self._identify_unique_fixed_points()
+        unique_fps = all_fps.get_unique()
 
-        self._compute_jacobians_at_unique_fixed_points()
+        if self.do_compute_jacobians:
+            print('Computing Jacobian at %d '
+                  'unique fixed points.\n' % unique_fps.n)
+            J_xstar = self._compute_multiple_jacobians_np(unique_fps)
+            unique_fps.J_xstar = J_xstar
 
-    def print_summary(self, unique=True):
-        '''Prints a summary of the fixed-point-finding optimization.
+        return unique_fps, all_fps
 
-        Args:
-            unique (optional): A bool specifying whether to only print a
-            summary relating to the unique fixed points identified. If False,
-            the summary will reflect all fixed points identified from all
-            initial_states.
-        '''
-        if unique:
-            unique_str = 'unique_'
-        else:
-            unique_str = ''
-
-        print('\nThe q function at the fixed points:')
-        print(getattr(self, unique_str + 'qstar'))
-
-        print('\nChange in the q function from the final iteration \
-              of each optimization:')
-        print(getattr(self, unique_str + 'dq'))
-
-        print('\nNumber of iterations completed for each optimization:')
-        print(getattr(self, unique_str + 'n_iters'))
-
-        print('\nThe fixed points:')
-        print(getattr(self, unique_str + 'xstar'))
-
-        print('\nThe fixed points after one state transition:')
-        print(getattr(self, unique_str + 'F_xstar'))
-        print('(these should be very close to the fixed points)')
-
-        if unique:
-            print('\nThe Jacobians at the fixed points:')
-            print(self.unique_J_xstar)
-
-    def plot_summary(self,
-                     state_traj=None,
-                     plot_batch_idx=None,
-                     plot_start_time=0,
-                     plot_stop_time=None,
-                     mode_scale=0.25):
-        '''Plots a visualization and analysis of the unique fixed points.
-
-        1) Finds a low-dimensional subspace for visualization via PCA. If
-        state_traj is provided, PCA is fit to [all of] those RNN state
-        trajectories. Otherwise, PCA is fit to the identified unique fixed
-        points. This subspace is 3-dimensional if the RNN state dimensionality
-        is >= 3.
-
-        2) Plots the PCA representation of the stable unique fixed points as
-        black dots.
-
-        3) Plots the PCA representation of the unstable unique fixed points as
-        red dots.
-
-        4) Plots the PCA representation of the modes of the Jacobian at each
-        fixed point. By default, only unstable modes are plotted.
-
-        5) (optional) Plots example RNN state trajectories as blue lines.
-
-        Args:
-            state_traj (optional): [n_batch x n_time x n_dims] numpy
-            array or LSTMStateTuple with .c and .h as
-            [n_batch x n_time x n_dims/2] numpy arrays. Contains example
-            trials of RNN state trajectories.
-
-            plot_batch_idx (optional): Indices specifying which trials in
-            state_traj to plot on top of the fixed points. Default: plot all
-            trials.
-
-            plot_start_time (optional): int specifying the first timestep to
-            plot in the example trials of state_traj. Default: 0.
-
-            plot_stop_time (optional): int specifying the last timestep to
-            plot in the example trials of stat_traj. Default: n_time.
-
-            stop_time (optional):
-
-            mode_scale (optional): Non-negative float specifying the scaling
-            of the plotted eigenmodes. A value of 1.0 results in each mode
-            plotted as a set of diametrically opposed line segments
-            originating at a fixed point, with each segment's length specified
-            by the magnitude of the corresponding eigenvalue.
-
-        Returns:
-            None.
-        '''
-        FIG_WIDTH = 6 # inches
-        FIG_HEIGHT = 6 # inches
-        FONT_WEIGHT = 'bold'
-
-        xstar = self.unique_xstar
-        J_xstar = self.unique_J_xstar
-
-        if state_traj is not None:
-            # Use LSTMTools here
-            if self.is_lstm:
-                state_traj_bxtxd = tf_utils.convert_from_LSTMStateTuple(
-                    state_traj)
-            else:
-                state_traj_bxtxd = state_traj
-
-            [n_batch, n_time, n_dims] = state_traj_bxtxd.shape
-
-            # Ensure plot_start_time >= 0
-            plot_start_time = np.max([plot_start_time, 0])
-
-            if plot_stop_time is None:
-                plot_stop_time = n_time
-            else:
-                # Ensure plot_stop_time <= n_time
-                plot_stop_time = np.min([plot_stop_time, n_time])
-
-            plot_time_idx = range(plot_start_time, plot_stop_time)
-
-        n_inits, n_dims = np.shape(xstar)
-
-        fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT),
-                         tight_layout=True)
-        if n_dims >= 3:
-            pca = PCA(n_components=3)
-
-            if state_traj is not None:
-                state_traj_btxd = np.reshape(state_traj_bxtxd,
-                    (n_batch*n_time, n_dims))
-                pca.fit(state_traj_btxd)
-            else:
-                pca.fit(xstar)
-
-            ax = fig.add_subplot(111, projection='3d')
-            ax.set_xlabel('PC 1', fontweight=FONT_WEIGHT)
-            ax.set_zlabel('PC 3', fontweight=FONT_WEIGHT)
-            ax.set_ylabel('PC 2', fontweight=FONT_WEIGHT)
-
-            # For generating figure in paper.md
-            ax.set_xticks([-2, -1, 0, 1, 2])
-            ax.set_yticks([-1, 0, 1])
-            ax.set_zticks([-1, 0, 1])
-        else:
-            # For 1D or 0D networks (i.e., never)
-            pca = None
-            ax = fig.add_subplot(111)
-            ax.xlabel('Hidden 1', fontweight=FONT_WEIGHT)
-            if n_dims == 2:
-                ax.ylabel('Hidden 2', fontweight=FONT_WEIGHT)
-
-        if state_traj is not None:
-            if plot_batch_idx is None:
-                plot_batch_idx = range(n_batch)
-
-            for batch_idx in plot_batch_idx:
-                x_idx = state_traj_bxtxd[batch_idx]
-
-                if n_dims >= 3:
-                    z_idx = pca.transform(x_idx[plot_time_idx, :])
-                else:
-                    z_idx = x_idx[plot_time_idx, :]
-                self._plot_123d(ax, z_idx, color='b', linewidth=0.2)
-
-        for init_idx in range(n_inits):
-            self._plot_fixed_point(
-                ax,
-                xstar[init_idx:(init_idx+1)],
-                J_xstar[init_idx],
-                pca,
-                scale=mode_scale)
-
-        plt.ion()
-        plt.show()
-        plt.pause(1e-10)
-
-    def _run_joint_optimization(self):
+    def _run_joint_optimization(self, initial_states, inputs):
         '''Finds multiple fixed points via a joint optimization over multiple
         state vectors.
 
-        After running, the following class variables contain the results of
-        the optimization (see find_fixed_points for detailed descriptions):
-
-        xstar, F_xstar, qstar, dq, n_iters
-
         Args:
-            None.
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: A [n x n_inputs] numpy array specifying a set of constant
+            inputs into the RNN.
 
         Returns:
-            None.
-
+            fps: A FixedPoints object containing the optimized fixed points
+            and associated metadata.
         '''
-        x, F, states, new_states = \
-            self._grab_RNN(self.initial_states)
+        n, _ = tf_utils.safe_shape(initial_states)
+
+        x, F = self._grab_RNN(initial_states, inputs)
 
         # an array of objectives (one per initial state) to be combined below
         q_1xn = 0.5 * tf.reduce_sum(tf.square(F - x), axis=1)
@@ -531,12 +290,11 @@ class FixedPointFinder(object):
         q = tf.reduce_mean(q_1xn)
 
         print('\nFinding fixed points via joint optimization...')
-        self.xstar, self.F_xstar, _, dq, n_iters = \
-            self._run_optimization_loop(q, x, F, states, new_states)
+        xstar, F_xstar, _, dq, n_iters = self._run_optimization_loop(q, x, F)
 
         '''Replace mean qstar (the scalar loss function) with the individual q
         values at each fixed point'''
-        self.qstar = self.session.run(q_1xn)
+        qstar = self.session.run(q_1xn)
 
         '''Note, there is no meaningful way to get individual dq values
         without following up with at least one gradient step from the
@@ -545,119 +303,242 @@ class FixedPointFinder(object):
         are not local minima, but do not prevent the joint optimization from
         reaching termination criteria.'''
 
-        self.dq = dq * np.ones([self.n_inits])
-        self.n_iters = n_iters * np.ones([self.n_inits])
+        dq = dq * np.ones([n])
+        n_iters = n_iters * np.ones([n])
 
-    def _run_sequential_optimizations(self):
+        fps = FixedPoints(
+            xstar=xstar,
+            x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_states),
+            inputs=inputs,
+            F_xstar=F_xstar,
+            qstar=qstar,
+            dq=dq,
+            n_iters=n_iters,
+            tol_unique=self.tol_unique,
+            dtype=self.np_dtype)
+
+        return fps
+
+    def _run_sequential_optimizations(self, initial_states, inputs,
+                                      q_prior=None):
         '''Finds fixed points sequentially, running an optimization from one
         initial state at a time.
 
-        After running, the following class variables contain the results of
-        the optimization (see find_fixed_points for detailed descriptions):
-
-        xstar, F_xstar, qstar, dq, n_iters
-
         Args:
-            None.
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: An [n x n_inputs] numpy array specifying a set of constant
+            inputs into the RNN.
+
+            q_prior (optional): An [n,] numpy array containing q values from a
+            previous optimization round. Provide these if performing
+            additional optimization iterations on a subset of outlier
+            candidate fixed points.
 
         Returns:
-            None.
+            fps: A FixedPoints object containing the optimized fixed points
+            and associated metadata.
 
         '''
 
-        # *********************************************************************
-        # Allocate memory for storing results *********************************
-        # *********************************************************************
+        is_fresh_start = q_prior is None
 
-        print('\nFinding fixed points via sequential optimizations...')
+        if is_fresh_start:
+            print('\nFinding fixed points via sequential optimizations...')
 
-        n_dims = self.n_dims
-        n_inits = self.n_inits
+        n_inits, n_states = tf_utils.safe_shape(initial_states)
+        n_inputs = inputs.shape[1]
 
-        if self.is_lstm:
-            self.xstar = np.zeros((n_inits, 2*n_dims))
-            self.F_xstar = np.zeros((n_inits, 2*n_dims))
-        else:
-            self.xstar = np.zeros((n_inits, n_dims))
-            self.F_xstar = np.zeros((n_inits, n_dims))
+        # Allocate memory for storing results
+        fps = FixedPoints(do_alloc_nan=True,
+                          n=n_inits,
+                          n_states=n_states,
+                          n_inputs=n_inputs,
+                          dtype=self.np_dtype)
 
-        self.qstar = np.zeros(n_inits)
-        self.dq = np.zeros(n_inits)
-        self.n_iters = np.zeros(n_inits)
+        for init_idx in range(n_inits):
 
-        for init_idx in range(self.n_inits):
+            index = slice(init_idx, init_idx+1)
 
-            # *****************************************************************
-            # Prepare initial state *******************************************
-            # *****************************************************************
-            if self.is_lstm:
-                c = self.initial_states.c[init_idx:(init_idx+1), :]
-                h = self.initial_states.h[init_idx:(init_idx+1), :]
-                initial_state = tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
+            initial_states_i = tf_utils.safe_index(initial_states, index)
+            inputs_i = inputs[index, :]
+
+            if is_fresh_start:
+                print('Initialization %d of %d:' %
+                    (init_idx+1, n_inits))
             else:
-                initial_state = self.initial_states[init_idx:(init_idx+1), :]
+                print('\n\tOutlier %d of %d (q=%.2e):' %
+                    (init_idx+1, n_inits, q_prior[init_idx]))
 
-            # *****************************************************************
-            # Solve for a single fixed point given an initial state ***********
-            # *****************************************************************
+            fps[init_idx] = self._run_single_optimization(
+                initial_states_i, inputs_i)
 
-            print('Initialization %d of %d:' % (init_idx+1, self.n_inits))
+        return fps
 
-            xstar, F_xstar, qstar, dq, n_iters = \
-                self._run_single_optimization(initial_state)
-
-            # *****************************************************************
-            # Package results *************************************************
-            # *****************************************************************
-
-            self.xstar[init_idx, :] = xstar
-            self.F_xstar[init_idx, :] = F_xstar
-            self.qstar[init_idx] = qstar
-            self.dq[init_idx] = dq
-            self.n_iters[init_idx] = n_iters
-
-    def _run_additional_iterations_on_outliers(self):
-        '''Detects outlier states with respect to the q function and runs
-        additional optimization iterations on those states, using the (slow)
-        sequential optimization procedure. This should only be used after
-        calling either _run_joint_optimization or
-        _run_sequential_optimizations. Updates class variables containing
-        optimization results.
+    @staticmethod
+    def identify_outliers(fps, thresh_q):
+        '''Identify fixed points with optimized q values that exceed a
+        specified threshold.
 
         Args:
-            None.
+            fps: A FixedPoints object containing optimized fixed points and
+            associated metadata.
+
+            thresh_q: A scalar float indicating the threshold on fixed points'
+            q values.
 
         Returns:
-            None.
+            A numpy array containing the indices into fps corresponding to the
+            fixed points with q values exceeding the threshold.
+
+        Usage:
+            idx = identify_outliers(fps, thresh_q)
+            outlier_fps = fps[idx]
         '''
-        outlier_min_q = np.median(self.qstar)*self.outlier_q_scale
-        is_outlier = self.qstar > outlier_min_q
-        idx_outliers = np.where(is_outlier)[0]
-        n_outliers = len(idx_outliers)
+        return np.where(fps.qstar > thresh_q)[0]
 
-        print('Detected %d \"outliers.\"' % n_outliers)
+    @staticmethod
+    def identify_non_outliers(fps, thresh_q):
+        '''Identify fixed points with optimized q values that do not exceed a
+        specified threshold.
 
-        if n_outliers == 0:
-            return
+        Args:
+            fps: A FixedPoints object containing optimized fixed points and
+            associated metadata.
+
+            thresh_q: A scalar float indicating the threshold on fixed points'
+            q values.
+
+        Returns:
+            A numpy array containing the indices into fps corresponding to the
+            fixed points with q values that do not exceed the threshold.
+
+        Usage:
+            idx = identify_non_outliers(fps, thresh_q)
+            non_outlier_fps = fps[idx]
+        '''
+        return np.where(fps.qstar <= thresh_q)[0]
+
+    def _run_additional_iterations_on_outliers(self, fps):
+        '''Detects outlier states with respect to the q function and runs
+        additional optimization iterations on those states This should only be
+        used after calling either _run_joint_optimization or
+        _run_sequential_optimizations.
+
+        Args:
+            A FixedPoints object containing (partially) optimized fixed points
+            and associated metadata.
+
+        Returns:
+            A FixedPoints object containing the further-optimized fixed points
+            and associated metadata.
+        '''
+
+        '''
+        Known issue:
+            Additional iterations do not always reduce q! This may have to do
+            with learning rate schedules restarting from values that are too large.
+        '''
+
+        def perform_outlier_optimization(fps, method):
+
+            idx_outliers = self.identify_outliers(fps, outlier_min_q)
+            n_outliers = len(idx_outliers)
+
+            outlier_fps = fps[idx_outliers]
+            n_prev_iters = outlier_fps.n_iters
+            inputs = outlier_fps.inputs
+            initial_states = self._get_rnncell_compatible_states(
+                outlier_fps.xstar)
+
+            if method == 'joint':
+
+                print('\tPerforming another round of joint optimization, '
+                    'over outlier states only.')
+
+                updated_outlier_fps = self._run_joint_optimization(
+                    initial_states, inputs)
+
+            elif method == 'sequential':
+
+                print('\tPerforming a round of sequential optimizations, '
+                    'over outlier states only.')
+
+                updated_outlier_fps = self._run_sequential_optimizations(
+                    initial_states, inputs, q_prior=outlier_fps.qstar)
+
+            else:
+                raise ValueError('Unsupported method: %s.' % method)
+
+            updated_outlier_fps.n_iters += n_prev_iters
+            fps[idx_outliers] = updated_outlier_fps
+
+            return fps
+
+        def outlier_update(fps):
+
+            idx_outliers = self.identify_outliers(fps, outlier_min_q)
+            n_outliers = len(idx_outliers)
+
+            print('\nDetected %d \"outliers\" (q>%.2e).' %
+                (n_outliers, outlier_min_q))
+
+            return idx_outliers
+
+        outlier_min_q = np.median(fps.qstar)*self.outlier_q_scale
+        idx_outliers = outlier_update(fps)
+
+        if len(idx_outliers) == 0:
+            return fps
 
         print('Performing additional optimization iterations.')
-        for counter, idx in enumerate(idx_outliers):
-            print('\n\tOutlier %d of %d (q=%.3e).'
-                % (counter+1, n_outliers, self.qstar[idx]))
 
-            initial_state = np.expand_dims(self.xstar[idx],axis=0)
-            if self.is_lstm:
-                initial_state = tf_utils.convert_to_LSTMStateTuple(
-                    initial_state)
-            xstar, F_xstar, qstar, dq, n_iters = self._run_single_optimization(
-                initial_state)
-            self.xstar[idx] = xstar
-            self.F_xstar[idx] = F_xstar
-            self.qstar[idx] = qstar
-            self.dq[idx] = dq
-            self.n_iters[idx] += n_iters
 
-    def _grab_RNN(self, initial_states):
+        '''
+        Experimental: Additional rounds of joint optimization. This code currently runs, but does not appear to be very helpful in eliminating outliers.
+        '''
+        if self.method == 'joint':
+            N_ROUNDS = 0 # consider making this a hyperparameter
+            for round in range(N_ROUNDS):
+
+                fps = perform_outlier_optimization(fps, 'joint')
+
+                idx_outliers = outlier_update(fps)
+                if len(idx_outliers) == 0:
+                    return fps
+
+        # Always perform a round of sequential optimizations on any (remaining)
+        # "outliers".
+        fps = perform_outlier_optimization(fps, 'sequential')
+        outlier_update(fps) # For print output only
+
+        return fps
+
+    def _get_rnncell_compatible_states(self, states):
+        '''Converts RNN states if necessary to be compatible with
+        self.rnn_cell.
+
+        Args:
+            states:
+                Either a numpy array or LSTMStateTuple.
+
+        Returns:
+            A representation of states that is compatible with self.rnn_cell.
+            If self.rnn_cell is an LSTMCell, the representation is as an
+            LSTMStateTuple. Otherwise, the representation is a numpy array.
+        '''
+        if self.is_lstm:
+            return tf_utils.convert_to_LSTMStateTuple(states)
+        else:
+            return states
+
+
+    def _grab_RNN(self, initial_states, inputs):
         '''Creates objects for interfacing with the RNN.
 
         These objects include 1) the optimization variables (initialized to
@@ -666,78 +547,88 @@ class FixedPointFinder(object):
         variables that are required for building the TF graph.
 
         Args:
-            initial_states: Either an [n_inits x n_dims] numpy array or an
+            initial_states: Either an [n x n_states] numpy array or an
             LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_dims/2] numpy arrays. These data specify the initial
+            [n x n_states/2] numpy arrays. These data specify the initial
             states of the RNN, from which the optimization will search for
             fixed points. The choice of type must be consistent with state
             type of rnn_cell.
 
+            inputs: A [n x n_inputs] numpy array specifying the inputs to the
+            RNN for this fixed point optimization.
+
         Returns:
-            x: An [n_inits x n_dims] tf.Variable (the optimization variable)
+            x: An [n x n_states] tf.Variable (the optimization variable)
             representing RNN states, initialized to the values in
-            initial_states. If the RNN is an LSTM, n_dims represents the
+            initial_states. If the RNN is an LSTM, n_states represents the
             concatenated hidden and cell states.
 
-            F: An [n_inits x n_dims] tf op representing the state transition
+            F: An [n x n_states] tf op representing the state transition
             function of the RNN applied to x.
-
-            states: Contains the same data as in x, but formatted to interface
-            with self.rnn_cell (e.g., formatted as LSTMStateTuple if rnn_cell
-            is a LSTMCell)
-
-            new_states: Contains the same data as in F, but formatted to
-            interface with self.rnn_cell
         '''
+
         if self.is_lstm:
-            # [1 x (2*n_dims)]
             c_h_init = tf_utils.convert_from_LSTMStateTuple(initial_states)
-
-            # [1 x (2*n_dims)]
-            x = tf.Variable(c_h_init, dtype=tf.float32)
-
-            states = tf_utils.convert_to_LSTMStateTuple(x)
+            x = tf.Variable(c_h_init, dtype=self.tf_dtype)
+            x_rnncell = tf_utils.convert_to_LSTMStateTuple(x)
         else:
-            x = tf.Variable(initial_states, dtype=tf.float32)
-            states = x
+            x = tf.Variable(initial_states, dtype=self.tf_dtype)
+            x_rnncell = x
 
-        n_inits = x.shape[0]
-        tiled_inputs = np.tile(self.inputs, [n_inits, 1])
-        inputs_tf = tf.constant(tiled_inputs, dtype=tf.float32)
+        n = x.shape[0]
+        inputs_tf = tf.constant(inputs, dtype=self.tf_dtype)
 
-        output, new_states = self.rnn_cell(inputs_tf, states)
+        output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
 
         if self.is_lstm:
-            # [1 x (2*n_dims)]
-            F = tf_utils.convert_from_LSTMStateTuple(new_states)
+            F = tf_utils.convert_from_LSTMStateTuple(F_rnncell)
         else:
-            F = new_states
+            F = F_rnncell
 
         init = tf.variables_initializer(var_list=[x])
         self.session.run(init)
 
-        return x, F, states, new_states
+        return x, F
 
-    def _run_single_optimization(self, initial_state):
+    def _run_single_optimization(self, initial_state, inputs):
         '''Finds a single fixed point from a single initial state.
 
         Args:
-            initial_state: A [1 x n_dims] numpy array or an
+            initial_state: A [1 x n_states] numpy array or an
             LSTMStateTuple with initial_state.c and initial_state.h as
-            [1 x n_dims/2] numpy arrays. These data specify an initial
+            [1 x n_states/2] numpy arrays. These data specify an initial
             state of the RNN, from which the optimization will search for
             a single fixed point. The choice of type must be consistent with
             state type of rnn_cell.
 
-        Returns:
-            All arguments returned by _run_optimization_loop (with
-            n_inits=1)
-        '''
-        x, F, state, new_state = self._grab_RNN(initial_state)
-        q = 0.5 * tf.reduce_sum(tf.square(F - x))
-        return self._run_optimization_loop(q, x, F, state, new_state)
+            inputs: A [1 x n_inputs] numpy array specifying the inputs to the
+            RNN for this fixed point optimization.
 
-    def _run_optimization_loop(self, q, x, F, state, new_state):
+        Returns:
+            A FixedPoints object containing the optimized fixed point and
+            associated metadata.
+        '''
+
+        x, F = self._grab_RNN(initial_state, inputs)
+        q = 0.5 * tf.reduce_sum(tf.square(F - x))
+
+        xstar, F_xstar, qstar, dq, n_iters = \
+            self._run_optimization_loop(q, x, F)
+
+        fp = FixedPoints(
+            xstar=xstar,
+            x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_state),
+            inputs=inputs,
+            F_xstar=F_xstar,
+            qstar=qstar,
+            dq=dq,
+            n_iters=n_iters,
+            tol_unique=self.tol_unique,
+            dtype=self.np_dtype)
+
+        return fp
+
+    def _run_optimization_loop(self, q, x, F):
         '''Minimize the scalar function q with respect to the tf.Variable x.
 
         Args:
@@ -751,13 +642,6 @@ class FixedPointFinder(object):
 
             F: An [n_inits x n_dims] tf op representing the state transition
             function of the RNN applied to x.
-
-            states: Contains the same data as in x, but formatted to interface
-            with self.rnn_cell (e.g., formatted as LSTMStateTuple if rnn_cell
-            is a LSTMCell)
-
-            new_states: Contains the same data as in F, but formatted to
-            interface with self.rnn_cell
 
         Returns:
             ev_x: An [n_inits x n_dims] numpy array containing the optimized
@@ -780,8 +664,11 @@ class FixedPointFinder(object):
                 % (iter_count, q, dq, lr))
 
         def print_final_summary(iter_count, q, dq, lr):
-            print('\t%d iters, q = %.3e, diff(q) = %.3e, learning rate = %.3e.'
-                % (iter_count, q, dq, lr))
+            print('\t%d iters, '
+                  'q = %.3e, '
+                  'diff(q) = %.3e, '
+                  'learning rate = %.3e.\n' %
+                  (iter_count, q, dq, lr))
 
         def print_values(x, F):
             print('\t\tx = \t\t' + str(x))
@@ -790,7 +677,7 @@ class FixedPointFinder(object):
         # If LSTM, here n_dims reflects the concatenated state
         n_inits, n_dims = x.shape
 
-        q_prev_tf = tf.placeholder(tf.float32, name='q_prev')
+        q_prev_tf = tf.placeholder(self.tf_dtype, name='q_prev')
 
         # when (q-q_prev) is negative, optimization is making progress
         dq = tf.abs(q-q_prev_tf)
@@ -798,11 +685,11 @@ class FixedPointFinder(object):
         # Optimizer
         adaptive_learning_rate = AdaptiveLearningRate(
             **self.adaptive_learning_rate_hps)
-        learning_rate = tf.placeholder(tf.float32, name='learning_rate')
+        learning_rate = tf.placeholder(self.tf_dtype, name='learning_rate')
 
         adaptive_grad_norm_clip = AdaptiveGradNormClip(
             **self.grad_norm_clip_hps)
-        grad_norm_clip_val = tf.placeholder(tf.float32,
+        grad_norm_clip_val = tf.placeholder(self.tf_dtype,
                                             name='grad_norm_clip_val')
 
         grads = tf.gradients(q, [x])
@@ -864,192 +751,32 @@ class FixedPointFinder(object):
 
         return ev_x, ev_F, ev_q, ev_dq, iter_count
 
-    def _identify_unique_fixed_points(self):
-        '''Identifies the unique fixed points found after optimizing from all
-        initiali_states
-
-        After running, the following class variables contain the data
-        corresponding to the unique fixed points (see find_fixed_points for
-        detailed descriptions):
-
-        unique_xstar, unique_F_xstar, unique_qstar, unique_dq, unique_n_iters
-
-        Args:
-            None.
-
-        Returns:
-            None.
-
-        '''
-        def unique_rows(x, approx_tol):
-            # Quick and dirty. Can update using pdist if necessary
-            d = int(np.round(np.max([0 -np.log10(approx_tol)])))
-            ux, idx = np.unique(x.round(decimals=d),
-                                axis=0,
-                                return_index=True)
-            return ux, idx
-
-        self.unique_xstar, idx = unique_rows(self.xstar, self.tol_unique)
-
-        self.n_unique = len(idx)
-        self.unique_F_xstar = self.F_xstar[idx]
-
-        if self.is_lstm:
-            self.unique_states = \
-                tf_utils.convert_to_LSTMStateTuple(self.unique_xstar)
-            self.unique_new_states = \
-                tf_utils.convert_to_LSTMStateTuple(self.unique_F_xstar)
-        else:
-            self.unique_states = self.unique_xstar
-            self.unique_new_states = self.unique_F_xstar
-
-        self.unique_qstar = self.qstar[idx]
-        self.unique_dq = self.dq[idx]
-        self.unique_n_iters = self.n_iters[idx]
-        '''In normal operation, Jacobians haven't yet been computed, so don't
-        bother indexing into those.'''
-
-    def _compute_jacobians_at_unique_fixed_points(self):
-        '''Computes Jacobians at the fixed points identified as being unique.
-
-        After running, the class variable unique_J_xstar contains the
-        Jacobians of the fixed points in self.unique_xstar (see
-        find_fixed_points for detailed variable descriptions).
-
-        Args:
-            None.
-
-        Returns:
-            None.
-        '''
-        print('Computing Jacobians at unique %d fixed points' % self.n_unique)
-
-        self.unique_J_xstar = self._compute_multiple_jacobians_np(
-            self.unique_states)
-
-    def _compute_multiple_jacobians_np(self, states_np):
+    def _compute_multiple_jacobians_np(self, fps):
         '''Computes the Jacobian of the RNN state transition function.
 
         Args:
-            states_np: An [n_inits x n_dims] numpy array containing the states
-            at which to compute the Jacobian.
+            fps: A FixedPoints object containing the RNN states (fps.xstar)
+            and inputs (fps.inputs) at which to compute the Jacobians.
 
         Returns:
-            J_np: An [n_inits x n_dims x n_dims] numpy array containing the
+            J_np: An [n x n_states x n_states] numpy array containing the
             Jacobian of the RNN state transition function at the states
-            specified in states_np.
+            specified in fps, given the inputs in fps.
 
         '''
-        x, F, states, new_states = self._grab_RNN(states_np)
+        inputs_np = fps.inputs
+
+        if self.is_lstm:
+            states_np = tf_utils.convert_to_LSTMStateTuple(fps.xstar)
+        else:
+            states_np = fps.xstar
+
+        x_tf, F_tf = self._grab_RNN(states_np, inputs_np)
         try:
-           J_tf = pfor.batch_jacobian(F, x)
+           J_tf = pfor.batch_jacobian(F_tf, x_tf)
         except absl.flags._exceptions.UnparsedFlagAccessError:
-           J_tf = pfor.batch_jacobian(F, x, use_pfor=False)
+           J_tf = pfor.batch_jacobian(F_tf, x_tf, use_pfor=False)
 
         J_np = self.session.run(J_tf)
 
         return J_np
-
-    @staticmethod
-    def _plot_fixed_point(ax, xstar, J, pca,
-        scale=1.0, max_n_modes=3, do_plot_stable_modes=False):
-        '''Plots a single fixed point and its dominant eigenmodes.
-
-        Args:
-            ax: Matplotlib figure axis on which to plot everything.
-
-            xstar: [1 x n_dims] numpy array representing the fixed point to be
-            plotted.
-
-            J: [n_dims x n_dims] numpy array containing the Jacobian of the
-            RNN transition function at fixed point xstar.
-
-            pca: PCA object as returned by sklearn.decomposition.PCA. This is
-            used to transform the high-d state space representations into 3-d
-            for visualization.
-
-            scale (optional): Scale factor for stretching (>1) or shrinking
-            (<1) lines representing eigenmodes of the Jacobian. Default: 1.0 (
-            unity).
-
-            max_n_modes (optional): Maximum number of eigenmodes to plot. Default: 3.
-
-            do_plot_stable_modes (optional): bool indicating whether or not to plot lines representing stable modes (i.e., eigenvectors of the Jacobian whose eigenvalue magnitude is less than one).
-
-        Returns:
-            None.
-        '''
-        n_dims = xstar.shape[1]
-        e_vals, e_vecs = np.linalg.eig(J)
-        sorted_e_val_idx = np.argsort(np.abs(e_vals))
-
-        if max_n_modes > len(e_vals):
-            max_n_modes = e_vals
-
-        for mode_idx in range(max_n_modes):
-            idx = sorted_e_val_idx[-(mode_idx+1)] # -[1, 2, ..., max_n_modes]
-
-            # Magnitude of complex eigenvalue
-            e_val_mag = np.abs(e_vals[idx])
-
-            if e_val_mag > 1.0 or do_plot_stable_modes:
-
-                # Already real. Cast to avoid warning.
-                e_vec = np.real(e_vecs[:,idx])
-
-                # [1 x d] numpy arrays
-                xstar_plus = xstar + scale*e_val_mag*e_vec
-                xstar_minus = xstar - scale*e_val_mag*e_vec
-
-                # [3 x d] numpy array
-                xstar_mode = np.vstack((xstar_minus, xstar, xstar_plus))
-
-                if e_val_mag < 1.0:
-                    color = 'k'
-                else:
-                    color = 'r'
-
-                if n_dims >= 3:
-                    # [3 x 3] numpy array
-                    zstar_mode = pca.transform(xstar_mode)
-                else:
-                    zstar_mode = x_star_mode
-
-                FixedPointFinder._plot_123d(ax, zstar_mode, color=color)
-
-        is_stable = all(np.abs(e_vals) < 1.0)
-        if is_stable:
-            color = 'k'
-        else:
-            color = 'r'
-
-        if n_dims >= 3:
-            zstar = pca.transform(xstar)
-        else:
-            zstar = xstar
-
-        FixedPointFinder._plot_123d(
-            ax, zstar, color=color, marker='.', markersize=12)
-
-    @staticmethod
-    def _plot_123d(ax, z, **kwargs):
-        '''Plots in 1D, 2D, or 3D.
-
-        Args:
-            ax: Matplotlib figure axis on which to plot everything.
-
-            z: [n x n_dims] numpy array containing data to be plotted,
-            where n_dims is 1, 2, or 3.
-
-            any keyword arguments that can be passed to ax.plot(...).
-
-        Returns:
-            None.
-        '''
-        n_dims = z.shape[1]
-        if n_dims ==3:
-            ax.plot(z[:, 0], z[:, 1], z[:, 2], **kwargs)
-        elif n_dims == 2:
-            ax.plot(z[:, 0], z[:, 1], **kwargs)
-        elif n_dims == 1:
-            ax.plot(z, **kwargs)
