@@ -13,6 +13,12 @@ from __future__ import print_function
 import numpy as np
 import tensorflow as tf
 
+'''
+These utility functions are primarily for robustly managing TFs different
+state representations depending on RNNCell types--specifically the
+LSTMStateTuple.
+'''
+
 def convert_from_LSTMStateTuple(lstm_state):
     '''Concatenates the representations of LSTM hidden and cell states.
 
@@ -99,3 +105,60 @@ def is_lstm(x):
         return True
 
     return False
+
+def maybe_convert_from_LSTMStateTuple(x):
+    '''Returns a numpy array representation of the RNN states in x.
+
+    Args:
+        x: RNN state representation, either as an LSTMStateTuple or a numpy
+        array.
+
+    Returns:
+        A numpy array representation of x (e.g., concatenated hidden and cell
+        states in the case of x as LSTMStateTuple).
+    '''
+    if is_lstm(x):
+        return convert_from_LSTMStateTuple(x)
+    else:
+        return x
+
+def safe_shape(states):
+    '''Returns shape of states robustly regardless of the TF representation.
+    If the state TF representation is an LSTMStateTuple, the shape of a
+    concatenated (non-tuple) state representation is returned.
+
+    Args:
+        states: Either a numpy array, a TF tensor, or an LSTMStateTuple.
+
+    Returns:
+        tuple shape of states, directly if states is a numpy array or TF
+        tensor, or shape of convert_from_LSTMStateTuple(states) if states is
+        an LSTMStateTuple.
+
+    '''
+    if is_lstm(states):
+        shape_tuple = states.h.shape
+        shape_list = list(shape_tuple)
+        shape_list[-1] *= 2
+        return tuple(shape_list)
+    else:
+        return states.shape
+
+def safe_index(states, index):
+    '''Safely index into RNN states, regardless of the TF representation.
+
+    Args:
+        states: Either a numpy array, a TF tensor, or an LSTMStateTuple.
+
+        index: a slice object for indexing into states.
+
+    Returns:
+        The data from states indexed by index. Type is preserved from states.
+    '''
+
+    if is_lstm(states):
+        c = states.c[index]
+        h = states.h[index]
+        return tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
+    else:
+        return states[index]
