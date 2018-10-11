@@ -222,7 +222,6 @@ class FixedPoints(object):
                                 return_index=True)
             return ux, idx
 
-        pdb.set_trace()
         if self.xstar is not None:
             if self.inputs is not None:
                 data = np.concatenate((self.xstar, self.inputs), axis=1)
