@@ -14,8 +14,6 @@ import numpy as np
 import tensorflow as tf
 import sys
 
-PATH_TO_FIXED_POINT_FINDER = '../'
-sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
 from FlipFlop import FlipFlop
 from FixedPoints import FixedPoints
 

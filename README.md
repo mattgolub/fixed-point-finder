@@ -2,7 +2,6 @@
 
 This code finds and analyzes the fixed points of recurrent neural networks that have been built using Tensorflow. The approach follows that outlined in Sussillo and Barak, "Opening the Black Box: Low-Dimensional Dynamics in High-Dimensional Recurrent Neural Networks", Neural Computation 2013 ([link](https://doi.org/10.1162/NECO_a_00409)).
 
-
 ## Prerequisites
 
 The code is written in Python 2.7.6. You will also need:
@@ -10,16 +9,20 @@ The code is written in Python 2.7.6. You will also need:
 * **TensorFlow** version 1.10 ([install](https://www.tensorflow.org/install/)).
 * **NumPy, SciPy, Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains all of them).
 * **Scikit-learn** ([install](http://scikit-learn.org/)).
-
-To run the included example, you will additionally need:
-* **RecurrentWhisperer** ([install](https://github.com/mattgolub/recurrent-whisperer/)); see 'Installation' below.
 * **PyYaml** ([install](https://pyyaml.org/)).
+* **RecurrentWhisperer** ([clone or download](https://github.com/mattgolub/recurrent-whisperer/)); see "Installation" below.
+
 
 ## Installation
 
-1. [Clone or download](https://help.github.com/articles/cloning-a-repository/) this repository into a directory of your choice.
-2. To run the example, you must also clone or download [```RecurrentWhisperer```](https://github.com/mattgolub/recurrent-whisperer/) into the same directory (do not place `recurrent-whisperer/` inside `fixed-point-finder/`; rather, both directories should share the same parent directory).
-3. Install the prerequisite packages listed above.
+1. Install the prerequisite packages listed above.
+2. Clone or download the [FixedPointFinder repository](https://help.github.com/articles/cloning-a-repository/).
+4. Add the directories for ```FixedPointFinder``` and ```RecurrentWhisperer```  to your Python path:
+```bash
+$ export PYTHONPATH=$PYTHONPATH:/path/to/your/directory/fixed-point-finder/
+$ export PYTHONPATH=$PYTHONPATH:/path/to/your/directory/recurrent-whisperer/
+```
+where "/path/to/your/directory" is replaced with the path to the corresponding repository. This step must be performed each time you launch a new terminal to work with ```FixedPointFinder```, and thus you may want to add the lines above to a startup script (e.g., the .bashrc / .bashprofile script in your home folder or an activate script in your virtual environment).
 
 ## General Usage
 

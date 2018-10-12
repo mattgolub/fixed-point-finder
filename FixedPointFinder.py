@@ -17,8 +17,6 @@ import tensorflow as tf
 from tensorflow.python.ops import parallel_for as pfor
 import absl
 
-PATH_TO_RECURRENT_WHISPERER = '../../recurrent-whisperer/'
-sys.path.insert(0, PATH_TO_RECURRENT_WHISPERER)
 from FixedPoints import FixedPoints
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
