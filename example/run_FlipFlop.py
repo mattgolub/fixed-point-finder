@@ -12,9 +12,9 @@ from __future__ import print_function
 import pdb
 import numpy as np
 import tensorflow as tf
-import sys
 
 from FlipFlop import FlipFlop
+from FixedPointFinder import FixedPointFinder
 from FixedPoints import FixedPoints
 
 # *****************************************************************************
@@ -52,9 +52,7 @@ ff.plot_trials(example_trials)
 # STEP 2: Find, analyze, and visualize the fixed points of the trained RNN ****
 # *****************************************************************************
 
-import sys
-sys.path.insert(0, '../FixedPointFinder/')
-from FixedPointFinder import FixedPointFinder
+
 
 '''Initial states are sampled from states observed during realistic behavior
 of the network. Because a well-trained network transitions instantaneously

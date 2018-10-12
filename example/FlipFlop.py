@@ -9,16 +9,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-import pdb
-
-PATH_TO_RECURRENT_WHISPERER = '../../recurrent-whisperer/'
-sys.path.insert(0, PATH_TO_RECURRENT_WHISPERER)
-from RecurrentWhisperer import RecurrentWhisperer
-
 import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
+
+from RecurrentWhisperer import RecurrentWhisperer
 
 class FlipFlop(RecurrentWhisperer):
     ''' Class for training an RNN to implement an N-bit memory, a.k.a. "the
