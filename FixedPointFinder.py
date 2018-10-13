@@ -63,7 +63,7 @@ class FixedPointFinder(object):
             identified as states with large q values relative to the median q
             value across all identified fixed points (i.e., after the initial
             optimization ran to termination). These additional optimizations
-            are run sequentially (even if method=='joint'). Default: False.
+            are run sequentially (even if method is 'joint'). Default: False.
 
             outlier_q_scale (optional): A positive float specifying the q
             value for putative outlier fixed points, relative to the median q
@@ -213,6 +213,8 @@ class FixedPointFinder(object):
         '''
         n = tf_utils.safe_shape(initial_states)[0]
 
+        print('\nSearching for fixed points from %d initial states.\n' % n)
+
         if inputs.shape[0] == 1:
             inputs_nxd = np.tile(inputs, [n, 1]) # safe, even if n == 1.
         elif inputs.shape[0] == n:
@@ -233,6 +235,8 @@ class FixedPointFinder(object):
         # Filter out duplicates after from the first optimization round
         unique_fps = all_fps.get_unique()
 
+        print('\tIdentified %d unique fixed points.' % unique_fps.n)
+
         # Optionally run additional optimization iterations on identified
         # fixed points with q values on the large side of the q-distribution.
         if self.do_rerun_outliers:
@@ -243,12 +247,12 @@ class FixedPointFinder(object):
             unique_fps = unique_fps.get_unique()
 
         if self.do_compute_jacobians:
-            print('Computing Jacobian at %d '
-                  'unique fixed points...' % unique_fps.n, end='')
+            print('\tComputing Jacobian at %d '
+                  'unique fixed points.' % unique_fps.n)
             J_xstar = self._compute_multiple_jacobians_np(unique_fps)
             unique_fps.J_xstar = J_xstar
 
-            print('done.\n')
+        print('\n\tFixed point finding complete.\n')
 
         return unique_fps, all_fps
 
@@ -271,7 +275,7 @@ class FixedPointFinder(object):
             fps: A FixedPoints object containing the optimized fixed points
             and associated metadata.
         '''
-        print('\nFinding fixed points via joint optimization...')
+        print('\tFinding fixed points via joint optimization.')
 
         n, _ = tf_utils.safe_shape(initial_states)
 
@@ -327,7 +331,7 @@ class FixedPointFinder(object):
         is_fresh_start = q_prior is None
 
         if is_fresh_start:
-            print('\nFinding fixed points via sequential optimizations...')
+            print('\tFinding fixed points via sequential optimizations...')
 
         n_inits, n_states = tf_utils.safe_shape(initial_states)
         n_inputs = inputs.shape[1]
@@ -347,7 +351,7 @@ class FixedPointFinder(object):
             inputs_i = inputs[index, :]
 
             if is_fresh_start:
-                print('Initialization %d of %d:' %
+                print('\n\tInitialization %d of %d:' %
                     (init_idx+1, n_inits))
             else:
                 print('\n\tOutlier %d of %d (q=%.2e):' %
@@ -463,7 +467,7 @@ class FixedPointFinder(object):
             idx_outliers = self.identify_outliers(fps, outlier_min_q)
             n_outliers = len(idx_outliers)
 
-            print('\nDetected %d \"outliers\" (q>%.2e).' %
+            print('\n\tDetected %d putative outliers (q>%.2e).' %
                 (n_outliers, outlier_min_q))
 
             return idx_outliers
@@ -473,9 +477,6 @@ class FixedPointFinder(object):
 
         if len(idx_outliers) == 0:
             return fps
-
-        print('Performing additional optimization iterations.')
-
 
         '''
         Experimental: Additional rounds of joint optimization. This code currently runs, but does not appear to be very helpful in eliminating outliers.
@@ -640,12 +641,15 @@ class FixedPointFinder(object):
         '''
         def print_update(iter_count, q, dq, lr, is_final=False):
             if is_final:
-                print('\t%d iters, ' % iter_count, end='')
+                delimiter = '\n\t\t'
+                print('\t\t%d iters%s' % (iter_count, delimiter), end='')
             else:
-                print('\tIter: %d, ' % iter_count, end='')
+                delimiter = ', '
+                print('\tIter: %d%s' % (iter_count, delimiter), end='')
 
             if q.size == 1:
-                print('q = %.2e, diff(q) = %.2e, ' % (q, dq), end='')
+                print('q = %.2e%sdq = %.2e%s' %
+                      (q, delimiter, dq, delimiter), end='')
             else:
                 mean_q = np.mean(q)
                 std_q = np.std(q)
@@ -653,11 +657,17 @@ class FixedPointFinder(object):
                 mean_dq = np.mean(dq)
                 std_dq = np.std(dq)
 
-                print('q = %.2e +/- %.2e, '
-                      'diff(q) = %.2e +/- %.2e, '
-                      % (mean_q, std_q, mean_dq, std_dq), end='')
+                print('q = %.2e +/- %.2e%s'
+                      'dq = %.2e +/- %.2e%s' %
+                      (mean_q, std_q, delimiter, mean_dq, std_dq, delimiter),
+                      end='')
 
-            print('learning rate = %.2e.' % lr)
+            print('learning rate = %.2e' % lr, end='')
+
+            if is_final:
+                print('') # Just for the endline
+            else:
+                print('.')
 
         '''There are two obvious choices of how to combine multiple minimization objectives:
 
