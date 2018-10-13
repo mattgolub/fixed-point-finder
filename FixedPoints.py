@@ -344,6 +344,51 @@ class FixedPoints(object):
         else:
             return x[idx]
 
+    def find(self, fp):
+        '''Searches in the current FixedPoints object for matches to a
+        specified fixed point. Two fixed points are defined as matching
+        if none of the element-wise differences between their .xstar or
+        .inputs properties differ by more than tol_unique.
+
+        Args:
+            fp: A FixedPoints object containing exactly one fixed point.
+
+        Returns:
+            [n_occurrences,] numpy array specifying indices into the current
+            FixedPoints object where matches to fp were found.
+        '''
+
+        # If not found or comparison is impossible (due to type or shape),
+        # follow convention of np.where and return an empty numpy array.
+        result = np.array([], dtype=int)
+
+        if isinstance(fp, FixedPoints):
+            if fp.n_states == self.n_states and fp.n_inputs == self.n_inputs:
+
+                self_data = np.concatenate((self.xstar, self.inputs), axis=1)
+                arg_data = np.concatenate((fp.xstar, fp.inputs), axis=1)
+
+                elementwise_abs_diff = np.abs(self_data - arg_data)
+                hits = np.all(elementwise_abs_diff <= self.tol_unique, axis=1)
+
+                result = np.where(hits)[0]
+
+        return result
+
+    def __contains__(self, xstar):
+        '''Checks whether a specified fixed point is contained in the object.
+
+        Args:
+            xstar: [n_states,] or [1, n_states] numpy array specifying the fixed
+            point of interest.
+
+        Returns:
+            bool indicating whether self.xstar contains any fixed point with a maximum elementwise difference from xstar that is less than tol_unique.
+        '''
+        idx = self.find(xstar)
+
+        return idx.size > 0
+
     def save(self, save_path):
         '''Saves all data contained in the FixedPoints object.
 
