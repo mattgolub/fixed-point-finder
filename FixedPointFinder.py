@@ -215,9 +215,10 @@ class FixedPointFinder(object):
 
         if inputs.shape[0] == 1:
             inputs_nxd = np.tile(inputs, [n, 1]) # safe, even if n == 1.
-        else:
-            # assumes inputs.shape[0] == n. should check.
+        elif inputs.shape[0] == n:
             inputs_nxd = inputs
+        else:
+            raise ValueError('Incompatible inputs shape: %s.' % inputs.shape)
 
         if self.method == 'sequential':
             all_fps = self._run_sequential_optimizations(
@@ -229,10 +230,17 @@ class FixedPointFinder(object):
             raise ValueError('Unsupported optimization method. Must be either \
                 \'joint\' or \'sequential\', but was  \'%s\'' % self.method)
 
-        if self.do_rerun_outliers:
-            all_fps = self._run_additional_iterations_on_outliers(all_fps)
-
+        # Filter out duplicates after from the first optimization round
         unique_fps = all_fps.get_unique()
+
+        # Optionally run additional optimization iterations on identified
+        # fixed points with q values on the large side of the q-distribution.
+        if self.do_rerun_outliers:
+            unique_fps = self._run_additional_iterations_on_outliers(
+                unique_fps)
+
+            # Filter out duplicates after from the second optimization round
+            unique_fps = unique_fps.get_unique()
 
         if self.do_compute_jacobians:
             print('Computing Jacobian at %d '
@@ -263,47 +271,18 @@ class FixedPointFinder(object):
             fps: A FixedPoints object containing the optimized fixed points
             and associated metadata.
         '''
+        print('\nFinding fixed points via joint optimization...')
+
         n, _ = tf_utils.safe_shape(initial_states)
 
         x, F = self._grab_RNN(initial_states, inputs)
 
-        # an array of objectives (one per initial state) to be combined below
-        q_1xn = 0.5 * tf.reduce_sum(tf.square(F - x), axis=1)
+        # A shape [n,] TF Tensor of objectives (one per initial state) to be
+        # combined in _run_optimization_loop.
+        q = 0.5 * tf.reduce_sum(tf.square(F - x), axis=1)
 
-        '''There are two obvious choices of how to combine multiple objectives
-        here: minimizing the maximum value; or minimizing the mean value.
-        While the former allows for direct checks for convergence for each
-        fixed point, the latter is empirically much more efficient (more
-        progress made in fewer gradient steps).
-
-
-        max: This should have nonzero gradients only for the state with the
-        largest q. If so, in effect, this will wind up doing a sequential
-        optimization.
-
-        mean: This should make progress on many of the states at each step,
-        which likely speeds things up. However, one could imagine pathological
-        situations arising where the objective continues to improve due to
-        improvements in some fixed points but not others.'''
-
-        q = tf.reduce_mean(q_1xn)
-
-        print('\nFinding fixed points via joint optimization...')
-        xstar, F_xstar, _, dq, n_iters = self._run_optimization_loop(q, x, F)
-
-        '''Replace mean qstar (the scalar loss function) with the individual q
-        values at each fixed point'''
-        qstar = self.session.run(q_1xn)
-
-        '''Note, there is no meaningful way to get individual dq values
-        without following up with at least one gradient step from the
-        sequential optimizer for each fixed point. This is likely a good idea
-        to do anyways, since it would allow fine tuning at slow points that
-        are not local minima, but do not prevent the joint optimization from
-        reaching termination criteria.'''
-
-        dq = dq * np.ones([n])
-        n_iters = n_iters * np.ones([n])
+        xstar, F_xstar, qstar, dq, n_iters = self._run_optimization_loop(
+            q, x, F)
 
         fps = FixedPoints(
             xstar=xstar,
@@ -337,7 +316,7 @@ class FixedPointFinder(object):
             q_prior (optional): An [n,] numpy array containing q values from a
             previous optimization round. Provide these if performing
             additional optimization iterations on a subset of outlier
-            candidate fixed points.
+            candidate fixed points. Default: None.
 
         Returns:
             fps: A FixedPoints object containing the optimized fixed points
@@ -536,7 +515,6 @@ class FixedPointFinder(object):
         else:
             return states
 
-
     def _grab_RNN(self, initial_states, inputs):
         '''Creates objects for interfacing with the RNN.
 
@@ -631,8 +609,10 @@ class FixedPointFinder(object):
         '''Minimize the scalar function q with respect to the tf.Variable x.
 
         Args:
-            q: A scalar TF op representing the optimization objective to be
-            minimized.
+            q: An [n_inits,] TF op representing the collection of
+            optimization objectives to be minimized. When n_inits > 1, the
+            actual optimization objective minimized is a combination of these
+            values.
 
             x: An [n_inits x n_dims] tf.Variable (the optimization variable)
             representing RNN states, initialized to the values in
@@ -658,28 +638,54 @@ class FixedPointFinder(object):
             iter_count: An int specifying the number of iterations completed
             before the optimization terminated.
         '''
-        def print_update(iter_count, q, dq, lr):
-            print('\tIter: %d, q = %.3e, diff(q) = %.3e, learning rate = %.3e.'
-                % (iter_count, q, dq, lr))
+        def print_update(iter_count, q, dq, lr, is_final=False):
+            if is_final:
+                print('\t%d iters, ' % iter_count, end='')
+            else:
+                print('\tIter: %d, ' % iter_count, end='')
 
-        def print_final_summary(iter_count, q, dq, lr):
-            print('\t%d iters, '
-                  'q = %.3e, '
-                  'diff(q) = %.3e, '
-                  'learning rate = %.3e.\n' %
-                  (iter_count, q, dq, lr))
+            if q.size == 1:
+                print('q = %.2e, diff(q) = %.2e, ' % (q, dq), end='')
+            else:
+                mean_q = np.mean(q)
+                std_q = np.std(q)
 
-        def print_values(x, F):
-            print('\t\tx = \t\t' + str(x))
-            print('\t\tF(x) = \t\t' + str(F))
+                mean_dq = np.mean(dq)
+                std_dq = np.std(dq)
 
-        # If LSTM, here n_dims reflects the concatenated state
-        n_inits, n_dims = x.shape
+                print('q = %.2e +/- %.2e, '
+                      'diff(q) = %.2e +/- %.2e, '
+                      % (mean_q, std_q, mean_dq, std_dq), end='')
 
-        q_prev_tf = tf.placeholder(self.tf_dtype, name='q_prev')
+            print('learning rate = %.2e.' % lr)
+
+        '''There are two obvious choices of how to combine multiple minimization objectives:
+
+            1--minimize the maximum value.
+            2--minimize the mean value.
+
+        While the former allows for direct checks for convergence for each
+        fixed point, the latter is empirically much more efficient (more
+        progress made in fewer gradient steps).
+
+        max: This should have nonzero gradients only for the state with the
+        largest q. If so, in effect, this will wind up doing a sequential
+        optimization.
+
+        mean: This should make progress on many of the states at each step,
+        which likely speeds things up. However, one could imagine pathological
+        situations arising where the objective continues to improve due to
+        improvements in some fixed points but not others.'''
+
+        q_scalar = tf.reduce_mean(q)
+        grads = tf.gradients(q_scalar, [x])
+
+        q_prev_tf = tf.placeholder(self.tf_dtype,
+                                   shape=q.shape.as_list(),
+                                   name='q_prev')
 
         # when (q-q_prev) is negative, optimization is making progress
-        dq = tf.abs(q-q_prev_tf)
+        dq = tf.abs(q - q_prev_tf)
 
         # Optimizer
         adaptive_learning_rate = AdaptiveLearningRate(
@@ -690,8 +696,6 @@ class FixedPointFinder(object):
             **self.grad_norm_clip_hps)
         grad_norm_clip_val = tf.placeholder(self.tf_dtype,
                                             name='grad_norm_clip_val')
-
-        grads = tf.gradients(q, [x])
 
         # Gradient clipping
         clipped_grads, grad_global_norm = tf.clip_by_global_norm(
@@ -710,10 +714,10 @@ class FixedPointFinder(object):
         init = tf.variables_initializer(var_list=uninitialized_vars)
         self.session.run(init)
 
-        ops_to_eval = [train, x, F, q, dq, grad_global_norm]
+        ops_to_eval = [train, x, F, q_scalar, q, dq, grad_global_norm]
 
         iter_count = 1
-        q_prev = np.nan
+        q_prev = np.tile(np.nan, q.shape.as_list())
         while True:
 
             iter_learning_rate = adaptive_learning_rate()
@@ -722,14 +726,12 @@ class FixedPointFinder(object):
             feed_dict = {learning_rate: iter_learning_rate,
                          grad_norm_clip_val: iter_clip_val,
                          q_prev_tf: q_prev}
-            ev_train, ev_x, ev_F, ev_q, ev_dq, ev_grad_norm = \
-                self.session.run(ops_to_eval, feed_dict)
+            ev_train, ev_x, ev_F, ev_q_scalar, ev_q, ev_dq, ev_grad_norm = self.session.run(ops_to_eval, feed_dict)
 
             if self.verbose:
                 print_update(iter_count, ev_q, ev_dq, iter_learning_rate)
-                # print_values(ev_x, ev_F)
 
-            if iter_count > 1 and ev_dq/iter_learning_rate < self.tol:
+            if iter_count > 1 and np.max(ev_dq) < self.tol*iter_learning_rate:
                 '''Here dq is scaled by the learning rate. Otherwise very
                 small steps due to very small learning rates would spuriously
                 indicate convergence. This scaling is roughly equivalent to
@@ -737,17 +739,19 @@ class FixedPointFinder(object):
                 print('\tOptimization complete to desired tolerance.')
                 break
 
-            if iter_count+1 > self.max_iters:
+            if iter_count + 1 > self.max_iters:
                 print('\tMaximum iteration count reached. Terminating.')
                 break
 
             q_prev = ev_q
-            adaptive_learning_rate.update(ev_q)
+            adaptive_learning_rate.update(ev_q_scalar)
             adaptive_grad_norm_clip.update(ev_grad_norm)
             iter_count += 1
 
-        print_final_summary(iter_count, ev_q, ev_dq, iter_learning_rate)
+        print_update(iter_count, ev_q, ev_dq, iter_learning_rate,
+                     is_final=True)
 
+        iter_count = np.tile(iter_count, ev_q.shape)
         return ev_x, ev_F, ev_q, ev_dq, iter_count
 
     def _compute_multiple_jacobians_np(self, fps):

@@ -16,6 +16,7 @@ from mpl_toolkits.mplot3d import Axes3D
 
 import pdb
 import numpy as np
+import cPickle
 import tf_utils
 
 class FixedPoints(object):
@@ -37,7 +38,8 @@ class FixedPoints(object):
                  n_states=None,
                  n_inputs=None,
                  tol_unique=1e-3,
-                 dtype=np.float32):
+                 dtype=np.float32,
+                 verbose=False):
         '''
         Initializes a FixedPoints object with all input arguments as class
         properties.
@@ -106,6 +108,8 @@ class FixedPoints(object):
             dtype: Data type for representing all of the object's data.
             Default: numpy.float32.
 
+            verbose: Bool indicating whether to print status updates.
+
         Note:
             xstar, x_init, inputs, F_xstar, and J_xstar are all numpy arrays,
             regardless of whether that type is consistent with the state type
@@ -124,6 +128,7 @@ class FixedPoints(object):
 
         self.tol_unique = tol_unique
         self.dtype = dtype
+        self.verbose = verbose
 
         if do_alloc_nan:
             if n is None:
@@ -338,6 +343,40 @@ class FixedPoints(object):
             return None
         else:
             return x[idx]
+
+    def save(self, save_path):
+        '''Saves all data contained in the FixedPoints object.
+
+        Args:
+            save_path: A string containing the path at which to save
+            (including directory, filename, and arbitrary extension).
+
+        Returns:
+            None.
+        '''
+        if self.verbose:
+            print('Saving FixedPoints object.')
+        file = open(save_path,'w')
+        file.write(cPickle.dumps(self.__dict__))
+        file.close
+
+    def restore(self, restore_path):
+        '''Restores data from a previously saved FixedPoints object.
+
+        Args:
+            restore_path: A string containing the path at which to find a
+            previously saved FixedPoints object (including directory, filename,
+            and extension).
+
+        Returns:
+            None.
+        '''
+        if self.verbose:
+            print('Restoring FixedPoints object.')
+        file = open(restore_path,'r')
+        restore_data = file.read()
+        file.close()
+        self.__dict__ = cPickle.loads(restore_data)
 
     def print_summary(self):
         '''Prints a summary of the fixed points.
