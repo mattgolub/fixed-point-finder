@@ -16,7 +16,7 @@ setup(
         'scikit-learn >=  0.20.0',
         'matplotlib >= 2.2.3',
         'pyyaml >= 3.13'],
-    dependency_links=['http://github.com/mattgolub/recurrent-whisperer/tarball/master']
+    dependency_links=['http://github.com/mattgolub/recurrent-whisperer/tarball/master'],
     extras_require={
         'tf': ['tensorflow>=1.10.0'],
         'tf_gpu': ['tensorflow-gpu>=1.10.0'],},
