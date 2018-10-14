@@ -7,7 +7,7 @@ setup(
     author = 'Matt Golub',
     author_email = 'mgolub@stanford.edu',
     description = 'A Tensorflow toolbox for identifying and characterizing fixed points in recurrent neural networks',
-    long_description=open('README.md').read()
+    long_description=open('README.md').read(),
     packages = find_packages(),
     install_requires = [
         'recurrent-whisperer',
