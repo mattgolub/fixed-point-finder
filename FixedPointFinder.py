@@ -32,7 +32,8 @@ class FixedPointFinder(object):
         tol_unique=1e-3,
         do_compute_jacobians=True,
         tf_dtype=tf.float32,
-        verbose=False,
+        verbose=True,
+        super_verbose=False,
         alr_hps=dict(),
         agnc_hps=dict(),
         adam_hps={'epsilon': 0.01}):
@@ -83,7 +84,10 @@ class FixedPointFinder(object):
             corresponding numpy data type is used for numpy objects and
             operations.
 
-            verbose (optional): A bool specifying whether or not to print
+            verbose (optional): A bool indicating whether to print high-level
+            status updates. Default: True.
+
+            super_verbose (optional): A bool indicating whether or not to print
             per-iteration updates during each optimization. Default: False.
 
             alr_hps (optional): A dict containing hyperparameters governing an
@@ -121,6 +125,7 @@ class FixedPointFinder(object):
         self.tol_unique = tol_unique
         self.do_compute_jacobians = do_compute_jacobians
         self.verbose = verbose
+        self.super_verbose = super_verbose
 
         self.adaptive_learning_rate_hps = alr_hps
         self.grad_norm_clip_hps = agnc_hps
@@ -213,7 +218,8 @@ class FixedPointFinder(object):
         '''
         n = tf_utils.safe_shape(initial_states)[0]
 
-        print('\nSearching for fixed points from %d initial states.\n' % n)
+        self._print_if_verbose('\nSearching for fixed points '
+                               'from %d initial states.\n' % n)
 
         if inputs.shape[0] == 1:
             inputs_nxd = np.tile(inputs, [n, 1]) # safe, even if n == 1.
@@ -235,7 +241,8 @@ class FixedPointFinder(object):
         # Filter out duplicates after from the first optimization round
         unique_fps = all_fps.get_unique()
 
-        print('\tIdentified %d unique fixed points.' % unique_fps.n)
+        self._print_if_verbose('\tIdentified %d unique fixed points.' %
+                               unique_fps.n)
 
         # Optionally run additional optimization iterations on identified
         # fixed points with q values on the large side of the q-distribution.
@@ -247,12 +254,12 @@ class FixedPointFinder(object):
             unique_fps = unique_fps.get_unique()
 
         if self.do_compute_jacobians:
-            print('\tComputing Jacobian at %d '
-                  'unique fixed points.' % unique_fps.n)
+            self._print_if_verbose('\tComputing Jacobian at %d '
+                                   'unique fixed points.' % unique_fps.n)
             J_xstar = self._compute_multiple_jacobians_np(unique_fps)
             unique_fps.J_xstar = J_xstar
 
-        print('\n\tFixed point finding complete.\n')
+        self._print_if_verbose('\n\tFixed point finding complete.\n')
 
         return unique_fps, all_fps
 
@@ -275,7 +282,8 @@ class FixedPointFinder(object):
             fps: A FixedPoints object containing the optimized fixed points
             and associated metadata.
         '''
-        print('\tFinding fixed points via joint optimization.')
+        self._print_if_verbose('\tFinding fixed points '
+                               'via joint optimization.')
 
         n, _ = tf_utils.safe_shape(initial_states)
 
@@ -331,7 +339,8 @@ class FixedPointFinder(object):
         is_fresh_start = q_prior is None
 
         if is_fresh_start:
-            print('\tFinding fixed points via sequential optimizations...')
+            self._print_if_verbose('\tFinding fixed points via '
+                                   'sequential optimizations...')
 
         n_inits, n_states = tf_utils.safe_shape(initial_states)
         n_inputs = inputs.shape[1]
@@ -351,10 +360,10 @@ class FixedPointFinder(object):
             inputs_i = inputs[index, :]
 
             if is_fresh_start:
-                print('\n\tInitialization %d of %d:' %
+                self._print_if_verbose('\n\tInitialization %d of %d:' %
                     (init_idx+1, n_inits))
             else:
-                print('\n\tOutlier %d of %d (q=%.2e):' %
+                self._print_if_verbose('\n\tOutlier %d of %d (q=%.2e):' %
                     (init_idx+1, n_inits, q_prior[init_idx]))
 
             fps[init_idx] = self._run_single_optimization(
@@ -424,7 +433,8 @@ class FixedPointFinder(object):
         '''
         Known issue:
             Additional iterations do not always reduce q! This may have to do
-            with learning rate schedules restarting from values that are too large.
+            with learning rate schedules restarting from values that are too
+            large.
         '''
 
         def perform_outlier_optimization(fps, method):
@@ -440,16 +450,18 @@ class FixedPointFinder(object):
 
             if method == 'joint':
 
-                print('\tPerforming another round of joint optimization, '
-                    'over outlier states only.')
+                self._print_if_verbose('\tPerforming another round of '
+                                       'joint optimization, '
+                                       'over outlier states only.')
 
                 updated_outlier_fps = self._run_joint_optimization(
                     initial_states, inputs)
 
             elif method == 'sequential':
 
-                print('\tPerforming a round of sequential optimizations, '
-                    'over outlier states only.')
+                self._print_if_verbose('\tPerforming a round of sequential '
+                                       'optimizations, over outlier '
+                                       'states only.')
 
                 updated_outlier_fps = self._run_sequential_optimizations(
                     initial_states, inputs, q_prior=outlier_fps.qstar)
@@ -467,8 +479,8 @@ class FixedPointFinder(object):
             idx_outliers = self.identify_outliers(fps, outlier_min_q)
             n_outliers = len(idx_outliers)
 
-            print('\n\tDetected %d putative outliers (q>%.2e).' %
-                (n_outliers, outlier_min_q))
+            self._print_if_verbose('\n\tDetected %d putative outliers '
+                                   '(q>%.2e).' % (n_outliers, outlier_min_q))
 
             return idx_outliers
 
@@ -479,7 +491,9 @@ class FixedPointFinder(object):
             return fps
 
         '''
-        Experimental: Additional rounds of joint optimization. This code currently runs, but does not appear to be very helpful in eliminating outliers.
+        Experimental: Additional rounds of joint optimization. This code
+        currently runs, but does not appear to be very helpful in eliminating
+        outliers.
         '''
         if self.method == 'joint':
             N_ROUNDS = 0 # consider making this a hyperparameter
@@ -669,7 +683,8 @@ class FixedPointFinder(object):
             else:
                 print('.')
 
-        '''There are two obvious choices of how to combine multiple minimization objectives:
+        '''There are two obvious choices of how to combine multiple
+        minimization objectives:
 
             1--minimize the maximum value.
             2--minimize the mean value.
@@ -736,9 +751,16 @@ class FixedPointFinder(object):
             feed_dict = {learning_rate: iter_learning_rate,
                          grad_norm_clip_val: iter_clip_val,
                          q_prev_tf: q_prev}
-            ev_train, ev_x, ev_F, ev_q_scalar, ev_q, ev_dq, ev_grad_norm = self.session.run(ops_to_eval, feed_dict)
 
-            if self.verbose:
+            (ev_train,
+            ev_x,
+            ev_F,
+            ev_q_scalar,
+            ev_q,
+            ev_dq,
+            ev_grad_norm) = self.session.run(ops_to_eval, feed_dict)
+
+            if self.super_verbose:
                 print_update(iter_count, ev_q, ev_dq, iter_learning_rate)
 
             if iter_count > 1 and np.max(ev_dq) < self.tol*iter_learning_rate:
@@ -746,11 +768,13 @@ class FixedPointFinder(object):
                 small steps due to very small learning rates would spuriously
                 indicate convergence. This scaling is roughly equivalent to
                 measuring the gradient norm.'''
-                print('\tOptimization complete to desired tolerance.')
+                self._print_if_verbose('\tOptimization complete '
+                                       'to desired tolerance.')
                 break
 
             if iter_count + 1 > self.max_iters:
-                print('\tMaximum iteration count reached. Terminating.')
+                self._print_if_verbose('\tMaximum iteration count reached. '
+                                       'Terminating.')
                 break
 
             q_prev = ev_q
@@ -758,8 +782,11 @@ class FixedPointFinder(object):
             adaptive_grad_norm_clip.update(ev_grad_norm)
             iter_count += 1
 
-        print_update(iter_count, ev_q, ev_dq, iter_learning_rate,
-                     is_final=True)
+        if self.verbose:
+            print_update(iter_count,
+                         ev_q, ev_dq,
+                         iter_learning_rate,
+                         is_final=True)
 
         iter_count = np.tile(iter_count, ev_q.shape)
         return ev_x, ev_F, ev_q, ev_dq, iter_count
@@ -793,3 +820,7 @@ class FixedPointFinder(object):
         J_np = self.session.run(J_tf)
 
         return J_np
+
+    def _print_if_verbose(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, **kwargs)
