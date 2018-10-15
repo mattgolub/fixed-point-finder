@@ -36,13 +36,25 @@ Written using Python 2.7.12.
 
 ## Advanced Installation
 
-Advanced Python users may skip the Recommended Installation, opting to instead clone this repository and ensure that compatible versions of the following prerequisites are available:
+Advanced Python users and those wishing to develop [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) may prefer a custom install. Such installs should adhere to the following general template: 
+
+1. Install [compatible versions](https://github.com/mattgolub/fixed-point-finder/blob/master/requirements-cpu.txt) of the following prerequisites.
 
 * **TensorFlow** (requires at least version 1.10) ([install](https://www.tensorflow.org/install/)).
 * **NumPy, SciPy, Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains all of them).
 * **Scikit-learn** ([install](http://scikit-learn.org/)).
 * **PyYaml** ([install](https://pyyaml.org/)).
 * **RecurrentWhisperer** ([install](https://github.com/mattgolub/recurrent-whisperer/)).
+
+2. Clone or download the FixedPointFinder repository.
+4. Add the directories for ```FixedPointFinder``` and ```RecurrentWhisperer```  to your Python path:
+
+    ```bash
+    $ export PYTHONPATH=$PYTHONPATH:/path/to/your/directory/fixed-point-finder/
+    $ export PYTHONPATH=$PYTHONPATH:/path/to/your/directory/recurrent-whisperer/
+    ```
+        
+    where "/path/to/your/directory" is replaced with the path to the corresponding repository. This step must be performed each time you launch a new terminal to work with ```FixedPointFinder```, and thus you may want to add the lines above to a startup script (e.g., the .bashrc / .bashprofile script in your home folder or an activate script in your virtual environment).
 
 ## General Usage
 
