@@ -2,48 +2,72 @@
 
 This code finds and analyzes the fixed points of recurrent neural networks that have been built using Tensorflow. The approach follows that outlined in Sussillo and Barak, "Opening the Black Box: Low-Dimensional Dynamics in High-Dimensional Recurrent Neural Networks", Neural Computation 2013 ([link](https://doi.org/10.1162/NECO_a_00409)).
 
-## Prerequisites
+Written using Python 2.7.12.
 
-The code is written in Python 2.7.6. You will also need:
+## Recommended Installation
 
-* **TensorFlow** version 1.10 ([install](https://www.tensorflow.org/install/)).
+1. [Clone or download](https://help.github.com/articles/cloning-a-repository/) this repository.
+2. Create a virtual environment for the required dependencies:
+    To create a new virtual environment specific to Python 2.7, enter at the command line:
+    ```bash
+    $ virtualenv --system-site-packages -p python2.7 your-virtual-env-name
+    ```
+    where `your-virtual-env-name` is a path to the the virtual environment you would like to create (e.g.: `/home/fpf`). Then   activate your new virtual environment:
+    ```bash
+    $ source your-virtual-env-name/bin/activate
+    ```
+    When you are finished working in your virtual environment (not now), enter:
+    ```bash
+    $ deactivate
+    ```
+3. Automatically assemble all dependencies using `pip` and the `requirements*.txt` files. This step will depend on whether you require Tensorflow with GPU support.
+
+    For GPU-enabled TensorFlow, use:
+
+    ```bash
+    $ pip install -r requirements-gpu.txt
+    ```
+
+    For CPU-only TensorFlow, use:
+
+    ```bash
+    $ pip install -r requirements-cpu.txt
+    ```
+
+## Advanced Installation
+
+Advanced Python users may skip the Recommended Installation, opting to instead clone this repository and ensure that compatible versions of the following prerequisites are available:
+
+* **TensorFlow** (requires at least version 1.10) ([install](https://www.tensorflow.org/install/)).
 * **NumPy, SciPy, Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains all of them).
 * **Scikit-learn** ([install](http://scikit-learn.org/)).
 * **PyYaml** ([install](https://pyyaml.org/)).
-* **RecurrentWhisperer** ([clone or download](https://github.com/mattgolub/recurrent-whisperer/)); see "Installation" below.
-
-
-## Installation
-
-1. Install the prerequisite packages listed above.
-2. Clone or download the [FixedPointFinder repository](https://help.github.com/articles/cloning-a-repository/).
-4. Add the directories for ```FixedPointFinder``` and ```RecurrentWhisperer```  to your Python path:
-```bash
-$ export PYTHONPATH=$PYTHONPATH:/path/to/your/directory/fixed-point-finder/
-$ export PYTHONPATH=$PYTHONPATH:/path/to/your/directory/recurrent-whisperer/
-```
-where "/path/to/your/directory" is replaced with the path to the corresponding repository. This step must be performed each time you launch a new terminal to work with ```FixedPointFinder```, and thus you may want to add the lines above to a startup script (e.g., the .bashrc / .bashprofile script in your home folder or an activate script in your virtual environment).
+* **RecurrentWhisperer** ([install](https://github.com/mattgolub/recurrent-whisperer/)).
 
 ## General Usage
 
 1. Start by building, and if desired, training an RNN. ```FixedPointFinder``` works with any arbitrary RNN that conforms to Tensorflow's `RNNCell` API.
 2. Build a ```FixedPointFinder``` object:
-  ```python
-  >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **hyperparams)
-  ```
-  using `your_rnn_cell`, the `RNNCell` that specifies the single-timestep transitions in your RNN, `tf_session`, the Tensorflow session in which your model has been instantiated, and `hyperparams`, a python dict of optional hyperparameters for the fixed-point optimizations.
-3. Specify the `initial_states` from which you'd like to initialize the local optimizations implemented by ```FixedPointFinder```. These states should conform to type expected by `your_rnn_cell` (e.g., `LSTMStateTuple` if `your_rnn_cell` is an `LSTMCell`).
-4. Specify the `inputs` under which you'd like to study your RNN. Currently, ```FixedPointFinder``` only supports static inputs. Thus `inputs` should be a numpy array with shape `(1, n_inputs)` where `n_inputs` is an int specifying the depth of the inputs expected by `your_rnn_cell`.
+    ```python
+    >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **hyperparams)
+    ```
+    using `your_rnn_cell`, the `RNNCell` that specifies the single-timestep transitions in your RNN, `tf_session`, the Tensorflow session in which your model has been instantiated, and `hyperparams`, a python dict of optional hyperparameters for the fixed-point optimizations.
+  
+3. Specify the `initial_states` from which you'd like to initialize the local optimizations implemented by ```FixedPointFinder```. These data should conform to shape and type expected by `your_rnn_cell`. For Tensorflow's `BasicRNNCell`, this would mean an `(n, n_states)` numpy array, where `n` is the number of initializations and `n_states` is the dimensionality of the RNN state (i.e., the number of hidden units). For Tensorflow's `LSTMCell`, `initial_states` should be an  `LSTMStateTuple` containing one `(n, nstates)` numpy array specifying the initializations of the hidden states and another `(n, nstates)` numpy array specifying the cell states.
+
+4. Specify the `inputs` under which you'd like to study your RNN. Currently, To study the RNN given a set of static inputs, `inputs` should be a numpy array with shape `(1, n_inputs)` where `n_inputs` is an int specifying the depth of the inputs expected by `your_rnn_cell`. Alternatively, you can search for fixed points under different inputs by specifying a potentially different input for each initial states by making `inputs` a `(n, n_inputs)` numpy array.
+
 5. Run the local optimizations that find the fixed points:
-```python
->>> fp_dict = fpf.find_fixed_points(initial_states, inputs)
-```
-The fixed points identified, along with the Jacobian of your RNN state transition function at those points, will be stored within the ```FixedPointFinder``` object, and are additionally optionally returned in the python dict `fp_dict`.
+    ```python
+    >>> fps = fpf.find_fixed_points(initial_states, inputs)
+    ```
+    The fixed points identified, the Jacobian of your RNN state transition function at those points, and some metadata corresponding to the optimizations will be returned in the `FixedPoints` object.`fps` (see [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) for more detail).
+
 6. Finally, visualize the identified fixed points:
-```python
->>> fpf.plot_summary()
-```
-You can also visualize these fixed points amongst state trajectories from your RNN (see the docstring for `FixedPointFinder.plot_summary()` and the example in `fixed-point-finder/example/run_FlipFlop.py`).
+    ```python
+    >>> fps.plot()
+    ```
+    You can also visualize these fixed points amongst state trajectories from your RNN (see `plot` in [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) and the example in [run_FlipFlop.py](https://github.com/mattgolub/fixed-point-finder/blob/master/example/run_FlipFlop.py))
 
 ## Example
 
@@ -53,7 +77,7 @@ You can also visualize these fixed points amongst state trajectories from your R
 >>> python run_FlipFlop.py
 ```
 
-The task is the "flip-flop" task previously described in @SussilloBarak2013. Briefly, the task is to implement a 3-bit binary memory, in which each of 3 input channels delivers signed transient pulses (-1 or +1) to a corresponding bit of the memory, and an input pulse flips the state of that memory bit (also -1 or +1) whenever a pulse's sign is opposite of the current state of the bit. The example trains a 16-unit LSTM RNN to solve this task (Fig. 1). Once the RNN is trained, the example uses ``FixedPointFinder`` to identify and characterize the trained RNN's fixed points. Finally, the example produces a visualization of these results (Fig. 2). In addition to demonstrating a working use of ``FixedPointFinder``, this example provides a testbed for experimenting with different RNN architectures (e.g., numbers of recurrent units, LSTMs vs. GRUs vs. vanilla RNNs) and characterizing how these lower-level model design choices manifest in the higher-level dynamical implementation used to solve a task.
+The task is the "flip-flop" task previously described in Sussillo and Barak (2013). Briefly, the task is to implement a 3-bit binary memory, in which each of 3 input channels delivers signed transient pulses (-1 or +1) to a corresponding bit of the memory, and an input pulse flips the state of that memory bit (also -1 or +1) whenever a pulse's sign is opposite of the current state of the bit. The example trains a 16-unit LSTM RNN to solve this task (Fig. 1). Once the RNN is trained, the example uses ``FixedPointFinder`` to identify and characterize the trained RNN's fixed points. Finally, the example produces a visualization of these results (Fig. 2). In addition to demonstrating a working use of ``FixedPointFinder``, this example provides a testbed for experimenting with different RNN architectures (e.g., numbers of recurrent units, LSTMs vs. GRUs vs. vanilla RNNs) and characterizing how these lower-level model design choices manifest in the higher-level dynamical implementation used to solve a task.
 
 ---
 ![Figure 1](paper/task_example.png)
