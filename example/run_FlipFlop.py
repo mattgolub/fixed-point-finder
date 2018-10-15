@@ -10,9 +10,12 @@ from __future__ import division
 from __future__ import print_function
 
 import pdb
+import sys
 import numpy as np
 import tensorflow as tf
 
+PATH_TO_FIXED_POINT_FINDER = '../'
+sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
 from FlipFlop import FlipFlop
 from FixedPointFinder import FixedPointFinder
 from FixedPoints import FixedPoints
