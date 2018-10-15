@@ -1,6 +1,6 @@
 # FixedPointFinder - A Tensorflow toolbox for finding fixed points and linearized dynamics in recurrent neural networks
 
-This code finds and analyzes the fixed points of recurrent neural networks that have been built using Tensorflow. The approach follows that outlined in Sussillo and Barak, "Opening the Black Box: Low-Dimensional Dynamics in High-Dimensional Recurrent Neural Networks", Neural Computation 2013 ([link](https://doi.org/10.1162/NECO_a_00409)).
+Finds and analyzes the fixed points of recurrent neural networks that have been built using Tensorflow. The approach follows that outlined in Sussillo and Barak, "Opening the Black Box: Low-Dimensional Dynamics in High-Dimensional Recurrent Neural Networks", Neural Computation 2013 ([link](https://doi.org/10.1162/NECO_a_00409)).
 
 Written using Python 2.7.12.
 
@@ -55,6 +55,16 @@ Advanced Python users and those wishing to develop [contributions](https://githu
     ```
         
     where "/path/to/your/directory" is replaced with the path to the corresponding repository. This step must be performed each time you launch a new terminal to work with ```FixedPointFinder```, and thus you may want to add the lines above to a startup script (e.g., the .bashrc / .bashprofile script in your home folder or an activate script in your virtual environment).
+
+## Testing the Package
+
+``FixedPointFinder`` includes a test suite for confirming successful installation, and for ensuring that [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) have not introduced bugs into the main control flow. The tests run ``FixedPointFinder`` over a set of RNN's where ground truth fixed points have been previously identified, numerically confirmed, and saved for comparison.
+
+To run the tests, descend into the test directory: `fixed-point-finder/test/` and execute:
+
+```bash
+>>> python run_test.py
+```
 
 ## General Usage
 
