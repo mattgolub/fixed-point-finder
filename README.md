@@ -58,7 +58,7 @@ Advanced Python users and those wishing to develop [contributions](https://githu
 
 ## Testing the Package
 
-``FixedPointFinder`` includes a test suite for confirming successful installation, and for ensuring that [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) have not introduced bugs into the main control flow. The tests run ``FixedPointFinder`` over a set of RNN's where ground truth fixed points have been previously identified, numerically confirmed, and saved for comparison.
+``FixedPointFinder`` includes a test suite for confirming successful installation, and for ensuring that [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) have not introduced bugs into the main control flow. The tests run ``FixedPointFinder`` over a set of RNNs where ground truth fixed points have been previously identified, numerically confirmed, and saved for comparison.
 
 To run the tests, descend into the test directory: `fixed-point-finder/test/` and execute:
 
