@@ -204,7 +204,7 @@ class FlipFlop(RecurrentWhisperer):
         ops_to_eval = [self.train_op,
             self.grad_global_norm,
             self.loss,
-            self.merged_opt_summaries]
+            self.merged_opt_summary]
 
         feed_dict = dict()
         feed_dict[self.inputs_bxtxd] = batch_data['inputs']
@@ -215,7 +215,7 @@ class FlipFlop(RecurrentWhisperer):
         [ev_train_op,
          ev_grad_global_norm,
          ev_loss,
-         ev_merged_opt_summaries] = \
+         ev_merged_opt_summary] = \
                 self.session.run(ops_to_eval, feed_dict=feed_dict)
 
         if self._epoch()==0:
@@ -224,10 +224,10 @@ class FlipFlop(RecurrentWhisperer):
             initialized to an enormous number to prevent clipping before we
             know the scale of the gradients).'''
             feed_dict[self.grad_norm_clip_val] = np.nan
-            ev_merged_opt_summaries = \
-                self.session.run(self.merged_opt_summaries, feed_dict)
+            ev_merged_opt_summary = \
+                self.session.run(self.merged_opt_summary, feed_dict)
 
-        self.writer.add_summary(ev_merged_opt_summaries, self._step())
+        self.writer.add_summary(ev_merged_opt_summary, self._step())
 
         summary = {'loss': ev_loss, 'grad_global_norm': ev_grad_global_norm}
 
