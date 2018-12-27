@@ -218,16 +218,18 @@ class FlipFlop(RecurrentWhisperer):
          ev_merged_opt_summary] = \
                 self.session.run(ops_to_eval, feed_dict=feed_dict)
 
-        if self._epoch()==0:
-            '''Hack to prevent throwing the vertical axis on the
-            Tensorboard figure for grad_norm_clip_val (grad_norm_clip val is
-            initialized to an enormous number to prevent clipping before we
-            know the scale of the gradients).'''
-            feed_dict[self.grad_norm_clip_val] = np.nan
-            ev_merged_opt_summary = \
-                self.session.run(self.merged_opt_summary, feed_dict)
+        if self.hps.do_save_tensorboard_events:
 
-        self.writer.add_summary(ev_merged_opt_summary, self._step())
+            if self._epoch()==0:
+                '''Hack to prevent throwing the vertical axis on the
+                Tensorboard figure for grad_norm_clip_val (grad_norm_clip val
+                is initialized to an enormous number to prevent clipping
+                before we know the scale of the gradients).'''
+                feed_dict[self.grad_norm_clip_val] = np.nan
+                ev_merged_opt_summary = \
+                    self.session.run(self.merged_opt_summary, feed_dict)
+
+            self.writer.add_summary(ev_merged_opt_summary, self._step())
 
         summary = {'loss': ev_loss, 'grad_global_norm': ev_grad_global_norm}
 
@@ -398,14 +400,14 @@ class FlipFlop(RecurrentWhisperer):
 
         return {'inputs': inputs, 'output': output}
 
-    def _setup_visualization(self):
+    def _setup_visualizations(self):
         '''See docstring in RecurrentWhisperer.'''
         FIG_WIDTH = 6 # inches
         FIX_HEIGHT = 3 # inches
         self.fig = plt.figure(figsize=(FIG_WIDTH, FIX_HEIGHT),
                               tight_layout=True)
 
-    def _update_visualization(self, train_data=None, valid_data=None):
+    def _update_visualizations(self, train_data=None, valid_data=None):
         '''See docstring in RecurrentWhisperer.'''
         data = self.generate_flipflop_trials()
         self.plot_trials(data)
