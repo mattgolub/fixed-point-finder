@@ -9,10 +9,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import sys
 import tensorflow as tf
 import numpy as np
-import matplotlib.pyplot as plt
 
+if os.environ.get('DISPLAY','') == '':
+    # Ensures smooth running across environments, including servers without
+    # graphical backends.
+    print('No display found. Using non-interactive Agg backend.')
+    import matplotlib
+    matplotlib.use('Agg')
+
+import matplotlib.pyplot as plt
 from RecurrentWhisperer import RecurrentWhisperer
 
 class FlipFlop(RecurrentWhisperer):
