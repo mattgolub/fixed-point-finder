@@ -129,6 +129,16 @@ class FlipFlop(RecurrentWhisperer):
         return {
             'log_dir': '/tmp/flipflop_logs/',
             'n_trials_plot': 1,
+
+            # DO NOT OVERWRITE THESE VALUES.
+            # See docstrings in recurrent_whisperer.py for definitions. The
+            # values given here reflect that FlipFlop does not use (or require)
+            # validation data (because all trials are generated independently).
+            'do_generate_training_visualizations': True,
+            'do_save_training_visualizations': False,
+            'do_generate_lvl_visualizations': False,
+            'do_save_lvl_visualizations': False,
+            'do_save_lvl_ckpt': False,
             }
 
     def _setup_model(self):
@@ -420,6 +430,16 @@ class FlipFlop(RecurrentWhisperer):
         '''See docstring in RecurrentWhisperer.'''
         data = self.generate_flipflop_trials()
         self.plot_trials(data)
+
+    def _save_training_visualizations(self):
+        ''' This is required by RecurrentWhisperer, but intended functionality
+        here is managed by _update_visualizations.'''
+        pass
+
+    def _save_lvl_visualizations(self):
+        ''' This is required by RecurrentWhisperer, but intended functionality
+        here is managed by _update_visualizations.'''
+        pass
 
     def plot_trials(self, data, start_time=0, stop_time=None):
         '''Plots example trials, complete with input pulses, correct outputs,
