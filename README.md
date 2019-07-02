@@ -45,7 +45,9 @@ Golub and Sussillo (2018), "FixedPointFinder: A Tensorflow toolbox for identifyi
 
 Advanced Python users and those wishing to develop [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) may prefer a custom install. Such installs should adhere to the following general template: 
 
-1. Install [compatible versions](https://github.com/mattgolub/fixed-point-finder/blob/master/requirements-cpu.txt) of the following prerequisites.
+1. [Clone or download](https://help.github.com/articles/cloning-a-repository/) this repository.
+
+2. Install [compatible versions](https://github.com/mattgolub/fixed-point-finder/blob/master/requirements-cpu.txt) of the following prerequisites.
 
 * **TensorFlow** (requires at least version 1.10) ([install](https://www.tensorflow.org/install/)).
 * **NumPy, SciPy, Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains all of them).
@@ -53,8 +55,7 @@ Advanced Python users and those wishing to develop [contributions](https://githu
 * **PyYaml** ([install](https://pyyaml.org/)).
 * **RecurrentWhisperer** ([install](https://github.com/mattgolub/recurrent-whisperer/)).
 
-2. Clone or download the FixedPointFinder repository.
-4. Add the directories for ```FixedPointFinder``` and ```RecurrentWhisperer```  to your Python path:
+3. Add the directories for ```FixedPointFinder``` and ```RecurrentWhisperer```  to your Python path:
 
     ```bash
     $ export PYTHONPATH=$PYTHONPATH:/path/to/your/directory/fixed-point-finder/
