@@ -240,6 +240,35 @@ class FixedPoints(object):
 
         return self[idx]
 
+    def decompose_Jacobians(self, do_batch=True):
+        '''Adds the following fields to the FixedPoints object:
+
+        eigval_J_xstar: [n x n_states] numpy array containing with
+        eigval_J_xstar[i, :] containing the eigenvalues of J_xstar[i, :, :].
+
+        eigvec_J_xstar: [n x n_states x n_states] numpy array containing with
+        eigvec_J_xstar[i, :, :] containing the eigenvectors of
+        J_xstar[i, :, :].
+        '''
+
+        if do_batch:
+            # Batch eigendecomposition
+            print('Decomposing Jacobians in a single batch.')
+            e_vals, e_vecs = np.linalg.eig(self.J_xstar)
+
+            self.eigval_J_xstar = e_vals
+            self.eigvec_J_xstar = e_vecs
+        else:
+            e_vals = []
+            e_vecs = []
+            for J in self.J_xstar:
+                e_vals_i, e_vecs_i = np.linalg.eig(J)
+                e_vals.append(np.expand_dims(e_vals_i, axis=0))
+                e_vecs.append(np.expand_dims(e_vecs_i, axis=0))
+
+            self.eigval_J_xstar = np.concatenate(e_vals, axis=0)
+            self.eigvec_J_xstar = np.concatenate(e_vecs, axis=0)
+
     def __setitem__(self, index, fps):
         '''Implements the assignment opperator.
 
