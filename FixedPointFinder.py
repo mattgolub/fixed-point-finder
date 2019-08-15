@@ -27,8 +27,10 @@ class FixedPointFinder(object):
         tol=1e-20,
         max_iters=5000,
         method='joint',
-        do_rerun_outliers=False,
-        outlier_q_scale=10,
+        do_rerun_q_outliers=False,
+        outlier_q_scale=10.0,
+        do_exclude_distance_outliers=True,
+        outlier_distance_scale=10.0,
         tol_unique=1e-3,
         do_compute_jacobians=True,
         tf_dtype=tf.float32,
@@ -36,7 +38,8 @@ class FixedPointFinder(object):
         super_verbose=False,
         alr_hps=dict(),
         agnc_hps=dict(),
-        adam_hps={'epsilon': 0.01}):
+        adam_hps={'epsilon': 0.01},
+        rnn_cell_feed_dict=dict()):
         '''Creates a FixedPointFinder object.
 
         Args:
@@ -53,22 +56,36 @@ class FixedPointFinder(object):
             if 'tol' has not been reached. Default: 5000.
 
             method (optional): Either 'joint' or 'sequential' indicating
-            whether to find each fixed point individually, or to optimize them
-            all jointly. Further testing is required to understand pros and
-            cons. Empirically, 'joint' runs faster (potentially making better
-            use of GPUs, fewer python for loops), but may be susceptible to
-            pathological conditions. Default: 'joint'.
+            whether to find each fixed point individually, or to optimize
+            them all jointly. Further testing is required to understand pros
+            and cons. Empirically, 'joint' runs faster (potentially making
+            better use of GPUs, fewer python for loops), but may be
+            susceptible to pathological conditions. Default: 'joint'.
 
-            do_rerun_outliers (optional): A bool indicating whether or not to
-            run additional optimization iterations on putative outlier states,
-            identified as states with large q values relative to the median q
-            value across all identified fixed points (i.e., after the initial
-            optimization ran to termination). These additional optimizations
-            are run sequentially (even if method is 'joint'). Default: False.
+            do_rerun_q_outliers (optional): A bool indicating whether or not
+            to run additional optimization iterations on putative outlier
+            states, identified as states with large q values relative to the
+            median q value across all identified fixed points (i.e., after
+            the initial optimization ran to termination). These additional
+            optimizations are run sequentially (even if method is 'joint').
+            Default: False.
 
             outlier_q_scale (optional): A positive float specifying the q
             value for putative outlier fixed points, relative to the median q
             value across all identified fixed points. Default: 10.
+
+            do_exclude_distance_outliers (optional): A bool indicating
+            whether or not to discard states that are far away from the set
+            of initial states, as measured by a normalized euclidean
+            distance. If true, states are evaluated and possibly discarded
+            after the initial optimization runs to termination.
+            Default: True.
+
+            outlier_distance_scale (optional): A positive float specifying a
+            normalized distance cutoff used to exclude distance outliers. All
+            distances are calculated relative to the centroid of the
+            initial_states and are normalized by the average distance-to-
+            centroid of the initial_states. Default: 10.
 
             tol_unique (optional): A positive scalar specifying the numerical
             precision required to label two fixed points as being unique from
@@ -107,6 +124,7 @@ class FixedPointFinder(object):
         '''
 
         self.rnn_cell = rnn_cell
+        self.rnn_cell_feed_dict = rnn_cell_feed_dict
         self.session = sess
         self.tf_dtype = tf_dtype
         self.np_dtype = tf_dtype.as_numpy_dtype
@@ -120,8 +138,10 @@ class FixedPointFinder(object):
         self.tol = tol
         self.method = method
         self.max_iters = max_iters
-        self.do_rerun_outliers = do_rerun_outliers
+        self.do_rerun_q_outliers = do_rerun_q_outliers
         self.outlier_q_scale = outlier_q_scale
+        self.do_exclude_distance_outliers = do_exclude_distance_outliers
+        self.outlier_distance_scale = outlier_distance_scale
         self.tol_unique = tol_unique
         self.do_compute_jacobians = do_compute_jacobians
         self.verbose = verbose
@@ -244,11 +264,15 @@ class FixedPointFinder(object):
         self._print_if_verbose('\tIdentified %d unique fixed points.' %
                                unique_fps.n)
 
+        if self.do_exclude_distance_outliers:
+            unique_fps = \
+                self._exclude_distance_outliers(unique_fps, initial_states)
+
         # Optionally run additional optimization iterations on identified
         # fixed points with q values on the large side of the q-distribution.
-        if self.do_rerun_outliers:
-            unique_fps = self._run_additional_iterations_on_outliers(
-                unique_fps)
+        if self.do_rerun_q_outliers:
+            unique_fps = \
+                self._run_additional_iterations_on_outliers(unique_fps)
 
             # Filter out duplicates after from the second optimization round
             unique_fps = unique_fps.get_unique()
@@ -372,7 +396,7 @@ class FixedPointFinder(object):
         return fps
 
     @staticmethod
-    def identify_outliers(fps, thresh_q):
+    def identify_q_outliers(fps, q_thresh):
         '''Identify fixed points with optimized q values that exceed a
         specified threshold.
 
@@ -380,21 +404,21 @@ class FixedPointFinder(object):
             fps: A FixedPoints object containing optimized fixed points and
             associated metadata.
 
-            thresh_q: A scalar float indicating the threshold on fixed points'
-            q values.
+            q_thresh: A scalar float indicating the threshold on fixed
+            points' q values.
 
         Returns:
-            A numpy array containing the indices into fps corresponding to the
-            fixed points with q values exceeding the threshold.
+            A numpy array containing the indices into fps corresponding to
+            the fixed points with q values exceeding the threshold.
 
         Usage:
-            idx = identify_outliers(fps, thresh_q)
+            idx = identify_q_outliers(fps, q_thresh)
             outlier_fps = fps[idx]
         '''
-        return np.where(fps.qstar > thresh_q)[0]
+        return np.where(fps.qstar > q_thresh)[0]
 
     @staticmethod
-    def identify_non_outliers(fps, thresh_q):
+    def identify_q_non_outliers(fps, q_thresh):
         '''Identify fixed points with optimized q values that do not exceed a
         specified threshold.
 
@@ -402,7 +426,7 @@ class FixedPointFinder(object):
             fps: A FixedPoints object containing optimized fixed points and
             associated metadata.
 
-            thresh_q: A scalar float indicating the threshold on fixed points'
+            q_thresh: A scalar float indicating the threshold on fixed points'
             q values.
 
         Returns:
@@ -410,10 +434,48 @@ class FixedPointFinder(object):
             fixed points with q values that do not exceed the threshold.
 
         Usage:
-            idx = identify_non_outliers(fps, thresh_q)
+            idx = identify_q_non_outliers(fps, q_thresh)
             non_outlier_fps = fps[idx]
         '''
-        return np.where(fps.qstar <= thresh_q)[0]
+        return np.where(fps.qstar <= q_thresh)[0]
+
+    @staticmethod
+    def identify_distance_non_outliers(fps, initial_states, dist_thresh):
+        if tf_utils.is_lstm(initial_states):
+            initial_states = \
+                tf_utils.convert_from_LSTMStateTuple(initial_states)
+
+        n_inits = initial_states.shape[0]
+        n_fps = fps.n
+
+        centroid = np.mean(initial_states, axis=0) # shape (n_states,)
+        init_dists = \
+            np.linalg.norm(initial_states - centroid, axis=1) # shape: (n,)
+        avg_init_dist = np.mean(init_dists)
+        scaled_init_dists = \
+            np.true_divide(init_dists, avg_init_dist)# shape: (n,)
+
+        fps_dists = np.linalg.norm(fps.xstar - centroid, axis=1)
+        scaled_fps_dists = np.true_divide(fps_dists, avg_init_dist)
+
+        init_non_outlier_idx = np.where(scaled_init_dists < dist_thresh)[0]
+        n_init_non_outliers = init_non_outlier_idx.size
+        print('\t\tinitial_states: %d outliers detected (of %d).'
+            % (n_inits - n_init_non_outliers, n_inits))
+
+        fps_non_outlier_idx = np.where(scaled_fps_dists < dist_thresh)[0]
+        n_fps_non_outliers = fps_non_outlier_idx.size
+        print('\t\tfixed points: %d outliers detected (of %d).'
+            % (n_fps - n_fps_non_outliers, n_fps))
+
+        return fps_non_outlier_idx
+
+    def _exclude_distance_outliers(self, fps, initial_states):
+        idx_keep = self.identify_distance_non_outliers(
+            fps,
+            initial_states,
+            self.outlier_distance_scale)
+        return fps[idx_keep]
 
     def _run_additional_iterations_on_outliers(self, fps):
         '''Detects outlier states with respect to the q function and runs
@@ -439,7 +501,7 @@ class FixedPointFinder(object):
 
         def perform_outlier_optimization(fps, method):
 
-            idx_outliers = self.identify_outliers(fps, outlier_min_q)
+            idx_outliers = self.identify_q_outliers(fps, outlier_min_q)
             n_outliers = len(idx_outliers)
 
             outlier_fps = fps[idx_outliers]
@@ -476,7 +538,7 @@ class FixedPointFinder(object):
 
         def outlier_update(fps):
 
-            idx_outliers = self.identify_outliers(fps, outlier_min_q)
+            idx_outliers = self.identify_q_outliers(fps, outlier_min_q)
             n_outliers = len(idx_outliers)
 
             self._print_if_verbose('\n\tDetected %d putative outliers '
@@ -751,6 +813,7 @@ class FixedPointFinder(object):
             feed_dict = {learning_rate: iter_learning_rate,
                          grad_norm_clip_val: iter_clip_val,
                          q_prev_tf: q_prev}
+            feed_dict.update(self.rnn_cell_feed_dict)
 
             (ev_train,
             ev_x,
