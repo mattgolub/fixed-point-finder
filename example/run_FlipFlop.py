@@ -20,9 +20,9 @@ from FlipFlop import FlipFlop
 from FixedPointFinder import FixedPointFinder
 from FixedPoints import FixedPoints
 
-# *****************************************************************************
-# STEP 1: Train an RNN to solve the N-bit memory task *************************
-# *****************************************************************************
+# ***************************************************************************
+# STEP 1: Train an RNN to solve the N-bit memory task ***********************
+# ***************************************************************************
 
 # Hyperparameters for AdaptiveLearningRate
 alr_hps = {'initial_rate': 0.1}
@@ -51,9 +51,9 @@ ff.train()
 example_trials = ff.generate_flipflop_trials()
 ff.plot_trials(example_trials)
 
-# *****************************************************************************
-# STEP 2: Find, analyze, and visualize the fixed points of the trained RNN ****
-# *****************************************************************************
+# ***************************************************************************
+# STEP 2: Find, analyze, and visualize the fixed points of the trained RNN **
+# ***************************************************************************
 
 
 
