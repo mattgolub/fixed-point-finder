@@ -12,6 +12,7 @@ from __future__ import print_function
 import pdb
 import numpy as np
 import numpy.random as npr
+import time
 import tensorflow as tf
 from tensorflow.python.ops import parallel_for as pfor
 import absl
@@ -36,6 +37,7 @@ class FixedPointFinder(object):
         tf_dtype=tf.float32,
         verbose=True,
         super_verbose=False,
+        n_iters_per_print_update=100,
         alr_hps=dict(),
         agnc_hps=dict(),
         adam_hps={'epsilon': 0.01},
@@ -104,12 +106,17 @@ class FixedPointFinder(object):
             verbose (optional): A bool indicating whether to print high-level
             status updates. Default: True.
 
-            super_verbose (optional): A bool indicating whether or not to print
-            per-iteration updates during each optimization. Default: False.
+            super_verbose (optional): A bool indicating whether or not to
+            print per-iteration updates during each optimization. Default:
+            False.
 
-            alr_hps (optional): A dict containing hyperparameters governing an
-            adaptive learning rate. Default: Set by AdaptiveLearningRate. See
-            AdaptiveLearningRate.py for more information on these
+            n_iters_per_print_update (optional): An int specifying how often
+            to print updates during the fixed point optimizations. Default:
+            100.
+
+            alr_hps (optional): A dict containing hyperparameters governing
+            an adaptive learning rate. Default: Set by AdaptiveLearningRate.
+            See AdaptiveLearningRate.py for more information on these
             hyperparameters and their default values.
 
             agnc_hps (optional): A dict containing hyperparameters governing
@@ -146,6 +153,7 @@ class FixedPointFinder(object):
         self.do_compute_jacobians = do_compute_jacobians
         self.verbose = verbose
         self.super_verbose = super_verbose
+        self.n_iters_per_print_update = n_iters_per_print_update
 
         self.adaptive_learning_rate_hps = alr_hps
         self.grad_norm_clip_hps = agnc_hps
@@ -716,6 +724,11 @@ class FixedPointFinder(object):
             before the optimization terminated.
         '''
         def print_update(iter_count, q, dq, lr, is_final=False):
+
+            t = time.time()
+            t_elapsed = t - t_start
+            avg_iter_time = t_elapsed / iter_count
+
             if is_final:
                 delimiter = '\n\t\t'
                 print('\t\t%d iters%s' % (iter_count, delimiter), end='')
@@ -738,7 +751,9 @@ class FixedPointFinder(object):
                       (mean_q, std_q, delimiter, mean_dq, std_dq, delimiter),
                       end='')
 
-            print('learning rate = %.2e' % lr, end='')
+            print('learning rate = %.2e%s' % (lr, delimiter), end='')
+
+            print('avg iter time = %.2e sec' % avg_iter_time, end='')
 
             if is_final:
                 print('') # Just for the endline
@@ -804,6 +819,7 @@ class FixedPointFinder(object):
         ops_to_eval = [train, x, F, q_scalar, q, dq, grad_global_norm]
 
         iter_count = 1
+        t_start = time.time()
         q_prev = np.tile(np.nan, q.shape.as_list())
         while True:
 
@@ -823,7 +839,8 @@ class FixedPointFinder(object):
             ev_dq,
             ev_grad_norm) = self.session.run(ops_to_eval, feed_dict)
 
-            if self.super_verbose:
+            if self.super_verbose and \
+                np.mod(iter_count, self.n_iters_per_print_update)==0:
                 print_update(iter_count, ev_q, ev_dq, iter_learning_rate)
 
             if iter_count > 1 and np.max(ev_dq) < self.tol*iter_learning_rate:
