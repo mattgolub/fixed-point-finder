@@ -183,7 +183,7 @@ class FixedPoints(object):
             self.n_iters = n_iters
             self.J_xstar = J_xstar
 
-    def _alloc_nan(self, shape):
+    def _alloc_nan(self, shape, dtype=None):
         '''Returns a nan-filled numpy array.
 
         Args:
@@ -194,7 +194,10 @@ class FixedPoints(object):
             numpy array with the desired shape, filled with NaNs.
 
         '''
-        result = np.zeros(shape, dtype=self.dtype)
+        if dtype is None:
+            dtype = self.dtype
+
+        result = np.zeros(shape, dtype=dtype)
         result.fill(np.nan)
         return result
 
@@ -251,18 +254,44 @@ class FixedPoints(object):
         J_xstar[i, :, :].
         '''
 
+        n = self.n # number of FPs represented in this object
+        n_states = self.n_states # dimensionality of each state
+
         if do_batch:
             # Batch eigendecomposition
             print('Decomposing Jacobians in a single batch.')
-            e_vals, e_vecs = np.linalg.eig(self.J_xstar)
+
+            # Check for NaNs in Jacobians
+            valid_J_idx = ~np.any(np.isnan(self.J_xstar), axis=(1,2))
+
+            if np.all(valid_J_idx):
+                # No NaNs, nothing to worry about.
+                e_vals, e_vecs = np.linalg.eig(self.J_xstar)
+            else:
+                # Set eigen-data to NaN if there are any NaNs in the
+                # corresponding Jacobian.
+                e_vals = self._alloc_nan(
+                    (n, n_states), dtype=np.complex64)
+                e_vecs = self._alloc_nan(
+                    (n, n_states, n_states), dtype=np.complex64)
+
+                e_vals[valid_J_idx], e_vecs[valid_J_idx] = \
+                    np.linalg.eig(self.J_xstar[valid_J_idx])
 
             self.eigval_J_xstar = e_vals
             self.eigvec_J_xstar = e_vecs
         else:
+            print('Decomposing Jacobians one-at-a-time.')
             e_vals = []
             e_vecs = []
             for J in self.J_xstar:
-                e_vals_i, e_vecs_i = np.linalg.eig(J)
+
+                if np.any(np.isnan(J)):
+                    e_vals_i = self._alloc_nan((n_states,))
+                    e_vecs_i = self._alloc_nan((n_states, n_states))
+                else:
+                    e_vals_i, e_vecs_i = np.linalg.eig(J)
+
                 e_vals.append(np.expand_dims(e_vals_i, axis=0))
                 e_vecs.append(np.expand_dims(e_vecs_i, axis=0))
 
@@ -432,7 +461,7 @@ class FixedPoints(object):
             print('Saving FixedPoints object.')
         file = open(save_path,'w')
         file.write(cPickle.dumps(self.__dict__))
-        file.close
+        file.close()
 
     def restore(self, restore_path):
         '''Restores data from a previously saved FixedPoints object.
