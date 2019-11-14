@@ -31,7 +31,7 @@ N_HIDDEN_LIST = [2, 3, 4]
 N_INPUTS = 1
 
 n_tests = len(N_HIDDEN_LIST)
-fpf_hps = {'do_rerun_outliers': True, 'verbose': False}
+fpf_hps = {'do_rerun_q_outliers': True, 'verbose': False}
 session = tf.Session()
 
 did_pass_tests1 = [False] * n_tests
