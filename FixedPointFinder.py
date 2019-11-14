@@ -904,3 +904,22 @@ class FixedPointFinder(object):
     def _print_if_verbose(self, *args, **kwargs):
         if self.verbose:
             print(*args, **kwargs)
+
+    ''' Work in progress toward rewriting everything the right way.
+    Current code adds new TF ops to the graph each time a TF-inducing
+    function is called. This was a quick and dirty implementation. The right
+    way to do everything is to setup the graph once in __init__() using
+    tf.placeholders. No new TF ops should be added to the graph after
+    that--this way runtimes will be constant regardless of how the user
+    interacts with the FPF class.
+
+    def _setup_jacobian_ops(self, F_tf):
+        x_tf = tf.placeholder(...)
+
+        try:
+           J_tf = pfor.batch_jacobian(F_tf, x_tf)
+        except absl.flags._exceptions.UnparsedFlagAccessError:
+           J_tf = pfor.batch_jacobian(F_tf, x_tf, use_pfor=False)
+
+        return J_tf
+    '''

@@ -134,8 +134,6 @@ class FlipFlop(RecurrentWhisperer):
             # See docstrings in recurrent_whisperer.py for definitions. The
             # values given here reflect that FlipFlop does not use (or require)
             # validation data (because all trials are generated independently).
-            'do_generate_training_visualizations': True,
-            'do_save_training_visualizations': False,
             'do_generate_lvl_visualizations': False,
             'do_save_lvl_visualizations': False,
             'do_save_lvl_ckpt': False,
@@ -187,12 +185,6 @@ class FlipFlop(RecurrentWhisperer):
         self.loss = tf.reduce_mean(
             tf.squared_difference(self.output_bxtxd, self.pred_output_bxtxd))
 
-    def _setup_saver(self):
-        '''See docstring in RecurrentWhisperer.'''
-
-        self.saver = tf.train.Saver(tf.global_variables(),
-                                    max_to_keep=self.hps.max_ckpt_to_keep)
-
     def _setup_training(self, train_data, valid_data):
         '''Does nothing. Required by RecurrentWhisperer.'''
         pass
@@ -223,7 +215,7 @@ class FlipFlop(RecurrentWhisperer):
         ops_to_eval = [self.train_op,
             self.grad_global_norm,
             self.loss,
-            self.merged_opt_summary]
+            self.tensorboard['merged_opt_summary']]
 
         feed_dict = dict()
         feed_dict[self.inputs_bxtxd] = batch_data['inputs']
@@ -237,7 +229,7 @@ class FlipFlop(RecurrentWhisperer):
          ev_merged_opt_summary] = \
                 self.session.run(ops_to_eval, feed_dict=feed_dict)
 
-        if self.hps.do_save_tensorboard_events:
+        if self.hps.do_save_tensorboard_summaries:
 
             if self._epoch()==0:
                 '''Hack to prevent throwing the vertical axis on the
@@ -246,9 +238,12 @@ class FlipFlop(RecurrentWhisperer):
                 before we know the scale of the gradients).'''
                 feed_dict[self.grad_norm_clip_val] = np.nan
                 ev_merged_opt_summary = \
-                    self.session.run(self.merged_opt_summary, feed_dict)
+                    self.session.run(
+                        self.tensorboard['merged_opt_summary'],
+                        feed_dict)
 
-            self.writer.add_summary(ev_merged_opt_summary, self._step())
+            self.tensorboard['writer'].add_summary(
+                ev_merged_opt_summary, self._step())
 
         summary = {'loss': ev_loss, 'grad_global_norm': ev_grad_global_norm}
 
@@ -421,25 +416,12 @@ class FlipFlop(RecurrentWhisperer):
 
     def _setup_visualizations(self):
         '''See docstring in RecurrentWhisperer.'''
-        FIG_WIDTH = 6 # inches
-        FIX_HEIGHT = 3 # inches
-        self.fig = plt.figure(figsize=(FIG_WIDTH, FIX_HEIGHT),
-                              tight_layout=True)
+        self.figs = {}
 
     def _update_visualizations(self, train_data=None, valid_data=None):
         '''See docstring in RecurrentWhisperer.'''
         data = self.generate_flipflop_trials()
         self.plot_trials(data)
-
-    def _save_training_visualizations(self):
-        ''' This is required by RecurrentWhisperer, but intended functionality
-        here is managed by _update_visualizations.'''
-        pass
-
-    def _save_lvl_visualizations(self):
-        ''' This is required by RecurrentWhisperer, but intended functionality
-        here is managed by _update_visualizations.'''
-        pass
 
     def plot_trials(self, data, start_time=0, stop_time=None):
         '''Plots example trials, complete with input pulses, correct outputs,
@@ -457,12 +439,21 @@ class FlipFlop(RecurrentWhisperer):
         Returns:
             None.
         '''
+
+        FIG_WIDTH = 6 # inches
+        FIG_HEIGHT = 3 # inches
+
         hps = self.hps
         n_batch = self.hps.data_hps['n_batch']
         n_time = self.hps.data_hps['n_time']
         n_plot = np.min([hps.n_trials_plot, n_batch])
 
-        fig = plt.figure(self.fig.number)
+        if 'example_trials' not in self.figs:
+            self.figs['example_trials'] = plt.figure(
+                figsize=(FIG_WIDTH, FIG_HEIGHT),
+                tight_layout=True)
+
+        fig = self.figs['example_trials']
         plt.clf()
 
         inputs = data['inputs']
@@ -494,9 +485,7 @@ class FlipFlop(RecurrentWhisperer):
             else:
                 plt.xlabel('Timestep', fontweight='bold')
 
-        plt.ion()
-        plt.show()
-        plt.pause(1e-10)
+        self.refresh_figs()
 
     @staticmethod
     def _plot_single_trial(input_txd, output_txd, pred_output_txd):
@@ -540,3 +529,9 @@ class FlipFlop(RecurrentWhisperer):
                 linestyle='--')
 
         plt.xlim(-1, n_time)
+
+    @staticmethod
+    def refresh_figs():
+        plt.ion()
+        plt.show()
+        plt.pause(1e-10)
