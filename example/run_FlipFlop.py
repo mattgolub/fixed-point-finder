@@ -12,7 +12,6 @@ from __future__ import print_function
 import pdb
 import sys
 import numpy as np
-import tensorflow as tf
 
 PATH_TO_FIXED_POINT_FINDER = '../'
 sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
@@ -54,8 +53,6 @@ ff.plot_trials(example_trials)
 # ***************************************************************************
 # STEP 2: Find, analyze, and visualize the fixed points of the trained RNN **
 # ***************************************************************************
-
-
 
 '''Initial states are sampled from states observed during realistic behavior
 of the network. Because a well-trained network transitions instantaneously
