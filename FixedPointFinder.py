@@ -243,7 +243,7 @@ class FixedPointFinder(object):
             ValueError if noise_scale is negative.
         '''
 
-        raise Warning('sample_states is deprecated and will be removed in a'
+        print('\nWarning: sample_states is deprecated and will be removed in a'
             'future version--use sample_inputs_and_states instead.')
 
         if self.is_lstm:
