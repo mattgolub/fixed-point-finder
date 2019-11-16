@@ -517,7 +517,8 @@ class FixedPoints(object):
         plot_batch_idx=None,
         plot_start_time=0,
         plot_stop_time=None,
-        mode_scale=0.25):
+        mode_scale=0.25,
+        fig=None):
 
         '''Plots a visualization and analysis of the unique fixed points.
 
@@ -561,6 +562,8 @@ class FixedPoints(object):
             plotted as a set of diametrically opposed line segments
             originating at a fixed point, with each segment's length specified
             by the magnitude of the corresponding eigenvalue.
+
+            fig (optional): Matplotlib figure upon which to plot.
 
         Returns:
             None.
@@ -674,9 +677,12 @@ class FixedPoints(object):
             plot_123d(
                 ax, zstar, color=color, marker='.', markersize=12)
 
-        FIG_WIDTH = 6 # inches
-        FIG_HEIGHT = 6 # inches
         FONT_WEIGHT = 'bold'
+        if fig is None:
+            FIG_WIDTH = 6 # inches
+            FIG_HEIGHT = 6 # inches
+            fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT),
+                tight_layout=True)
 
         xstar = self.xstar
         J_xstar = self.J_xstar
@@ -703,8 +709,6 @@ class FixedPoints(object):
 
         n_inits, n_states = np.shape(xstar)
 
-        fig = plt.figure(figsize=(FIG_WIDTH, FIG_HEIGHT),
-                         tight_layout=True)
         if n_states >= 3:
             pca = PCA(n_components=3)
 
