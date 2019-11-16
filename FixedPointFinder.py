@@ -159,6 +159,63 @@ class FixedPointFinder(object):
         self.grad_norm_clip_hps = agnc_hps
         self.adam_optimizer_hps = adam_hps
 
+    def sample_inputs_and_states(self, inputs, state_traj, n_inits,
+        noise_scale=0.0, rng=npr.RandomState(0)):
+        '''Draws random paired samples from the RNN's inputs and hidden-state
+        trajectories. Sampled states (but not inputs) can optionally be
+        corrupted by independent and identically distributed (IID) Gaussian
+        noise. These samples are intended to be used as initial states for
+        fixed point optimizations.
+
+        Args:
+            inputs: [n_batch x n_time x n_inputs] numpy array containing input
+            sequences to the RNN.
+
+            state_traj: [n_batch x n_time x n_states] numpy array or
+            LSTMStateTuple with .c and .h as [n_batch x n_time x n_states]
+            numpy arrays. Contains state trajectories of the RNN, given inputs.
+
+            n_inits: int specifying the number of sampled states to return.
+
+            noise_scale (optional): non-negative float specifying the standard
+            deviation of IID Gaussian noise samples added to the sampled states.
+            Default: 0.0.
+
+        Returns:
+            initial_states: Sampled RNN states as a [n_inits x n_states] numpy
+            array or as an LSTMStateTuple with .c and .h as [n_inits x n_states]
+            numpy arrays (type matches than of state_traj).
+
+        Raises:
+            ValueError if noise_scale is negative.
+        '''
+        if self.is_lstm:
+            state_traj_bxtxd = \
+                tf_utils.convert_from_LSTMStateTuple(state_traj)
+        else:
+            state_traj_bxtxd = state_traj
+
+        [n_batch, n_time, n_states] = state_traj_bxtxd.shape
+        n_inputs = inputs.shape[2]
+
+        # Draw random samples from inputs and state trajectories
+        input_samples = np.zeros([n_inits, n_inputs])
+        state_samples = np.zeros([n_inits, n_states])
+        for init_idx in range(n_inits):
+            trial_idx = rng.randint(n_batch)
+            time_idx = rng.randint(n_time)
+            input_samples[init_idx,:] = inputs[trial_idx,time_idx,:]
+            state_samples[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
+
+        # Add IID Gaussian noise to the sampled states
+        state_samples = self._add_iid_gaussian_noise(
+            state_samples, noise_scale, rng)
+
+        if self.is_lstm:
+            return input_samples, tf_utils.convert_to_LSTMStateTuple(states)
+        else:
+            return input_samples, state_samples
+
     def sample_states(self, state_traj, n_inits,
                       noise_scale=0.0, rng=npr.RandomState(0)):
         '''Draws random samples from trajectories of the RNN state. Samples
@@ -185,9 +242,13 @@ class FixedPointFinder(object):
         Raises:
             ValueError if noise_scale is negative.
         '''
+
+        raise Warning('sample_states is deprecated and will be removed in a'
+            'future version--use sample_inputs_and_states instead.')
+
         if self.is_lstm:
-            state_traj_bxtxd = tf_utils.convert_from_LSTMStateTuple(
-                state_traj)
+            state_traj_bxtxd = \
+                tf_utils.convert_from_LSTMStateTuple(state_traj)
         else:
             state_traj_bxtxd = state_traj
 
@@ -201,18 +262,40 @@ class FixedPointFinder(object):
             states[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
 
         # Add IID Gaussian noise to the sampled states
-        if noise_scale > 0.0:
-            states += noise_scale * rng.randn(n_inits, n_states)
-        elif noise_scale < 0.0:
-            raise ValueError('noise_scale must be non-negative,'
-                             ' but was %f' % noise_scale)
-        else: # noise_scale == 0 --> don't add noise
-            pass
+        states = self._add_iid_gaussian_noise(states, noise_scale, rng)
 
         if self.is_lstm:
             return tf_utils.convert_to_LSTMStateTuple(states)
         else:
             return states
+
+    def _add_iid_gaussian_noise(self, data,
+        noise_scale=0.0, rng=npr.RandomState(0)):
+        '''
+        Args:
+            data: Numpy array.
+
+            noise_scale: (Optional) non-negative scalar indicating the
+            standard deviation of the Gaussian noise samples to be generated.
+            Default: 0.0.
+
+            rng:
+
+        Returns:
+            Numpy array with shape matching that of data.
+
+        Raises:
+            ValueError if noise_scale is negative.
+        '''
+
+        # Add IID Gaussian noise
+        if noise_scale == 0.0:
+            return data # no noise to add
+        if noise_scale > 0.0:
+            return data + noise_scale * rng.randn(*data.shape)
+        elif noise_scale < 0.0:
+            raise ValueError('noise_scale must be non-negative,'
+                             ' but was %f' % noise_scale)
 
     def find_fixed_points(self, initial_states, inputs):
         '''Finds RNN fixed points and the Jacobians at the fixed points.
@@ -254,7 +337,8 @@ class FixedPointFinder(object):
         elif inputs.shape[0] == n:
             inputs_nxd = inputs
         else:
-            raise ValueError('Incompatible inputs shape: %s.' % inputs.shape)
+            raise ValueError('Incompatible inputs shape: %s.' %
+                str(inputs.shape))
 
         if self.method == 'sequential':
             all_fps = self._run_sequential_optimizations(
