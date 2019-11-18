@@ -414,14 +414,11 @@ class FlipFlop(RecurrentWhisperer):
 
         return {'inputs': inputs, 'output': output}
 
-    def _setup_visualizations(self):
-        '''See docstring in RecurrentWhisperer.'''
-        self.figs = {}
-
     def _update_visualizations(self, train_data=None, valid_data=None):
         '''See docstring in RecurrentWhisperer.'''
         data = self.generate_flipflop_trials()
         self.plot_trials(data)
+        self.refresh_figs()
 
     def plot_trials(self, data, start_time=0, stop_time=None):
         '''Plots example trials, complete with input pulses, correct outputs,
@@ -484,8 +481,6 @@ class FlipFlop(RecurrentWhisperer):
                 plt.xticks([])
             else:
                 plt.xlabel('Timestep', fontweight='bold')
-
-        self.refresh_figs()
 
     @staticmethod
     def _plot_single_trial(input_txd, output_txd, pred_output_txd):
