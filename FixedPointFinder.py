@@ -159,6 +159,10 @@ class FixedPointFinder(object):
         self.grad_norm_clip_hps = agnc_hps
         self.adam_optimizer_hps = adam_hps
 
+    # *************************************************************************
+    # Primary exposed functions ***********************************************
+    # *************************************************************************
+
     def sample_inputs_and_states(self, inputs, state_traj, n_inits,
         noise_scale=0.0, rng=npr.RandomState(0)):
         '''Draws random paired samples from the RNN's inputs and hidden-state
@@ -208,7 +212,7 @@ class FixedPointFinder(object):
             state_samples[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
 
         # Add IID Gaussian noise to the sampled states
-        state_samples = self._add_iid_gaussian_noise(
+        state_samples = self._add_gaussian_noise(
             state_samples, noise_scale, rng)
 
         if self.is_lstm:
@@ -244,7 +248,7 @@ class FixedPointFinder(object):
         '''
 
         print('\nWarning: sample_states is deprecated and will be removed in a'
-            'future version--use sample_inputs_and_states instead.')
+            ' future version--use sample_inputs_and_states instead.')
 
         if self.is_lstm:
             state_traj_bxtxd = \
@@ -262,40 +266,12 @@ class FixedPointFinder(object):
             states[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
 
         # Add IID Gaussian noise to the sampled states
-        states = self._add_iid_gaussian_noise(states, noise_scale, rng)
+        states = self._add_gaussian_noise(states, noise_scale, rng)
 
         if self.is_lstm:
             return tf_utils.convert_to_LSTMStateTuple(states)
         else:
             return states
-
-    def _add_iid_gaussian_noise(self, data,
-        noise_scale=0.0, rng=npr.RandomState(0)):
-        '''
-        Args:
-            data: Numpy array.
-
-            noise_scale: (Optional) non-negative scalar indicating the
-            standard deviation of the Gaussian noise samples to be generated.
-            Default: 0.0.
-
-            rng:
-
-        Returns:
-            Numpy array with shape matching that of data.
-
-        Raises:
-            ValueError if noise_scale is negative.
-        '''
-
-        # Add IID Gaussian noise
-        if noise_scale == 0.0:
-            return data # no noise to add
-        if noise_scale > 0.0:
-            return data + noise_scale * rng.randn(*data.shape)
-        elif noise_scale < 0.0:
-            raise ValueError('noise_scale must be non-negative,'
-                             ' but was %f' % noise_scale)
 
     def find_fixed_points(self, initial_states, inputs):
         '''Finds RNN fixed points and the Jacobians at the fixed points.
@@ -379,113 +355,77 @@ class FixedPointFinder(object):
 
         return unique_fps, all_fps
 
-    def _run_joint_optimization(self, initial_states, inputs):
-        '''Finds multiple fixed points via a joint optimization over multiple
-        state vectors.
+    # *************************************************************************
+    # Helper functions, no interaction with Tensorflow graph ******************
+    # *************************************************************************
+
+    @property
+    def _input_size(self):
+        ''' Gets the input size of the RNN. This is a bit of a hack to get
+        around the fact that rnn_cell.input_size is often undefined, even after
+        training and predicting from the model. A fine quirk of Tensorflow. Perhaps this is fixed in more recent versions of Tensorflow.
 
         Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_states] numpy arrays. These data specify the initial
-            states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
-
-            inputs: A [n x n_inputs] numpy array specifying a set of constant
-            inputs into the RNN.
+            None.
 
         Returns:
-            fps: A FixedPoints object containing the optimized fixed points
-            and associated metadata.
+            An int specifying the size of the RNN's inputs.
         '''
-        self._print_if_verbose('\tFinding fixed points '
-                               'via joint optimization.')
+        if self.is_lstm:
+            input_size = \
+                self.rnn_cell.variables[0].shape[0].value - \
+                self.rnn_cell.state_size[0]
+        else:
+            input_size = \
+                self.rnn_cell.variables[0].shape[0].value - \
+                self.rnn_cell.state_size
 
-        n, _ = tf_utils.safe_shape(initial_states)
+        return input_size
 
-        x, F = self._grab_RNN(initial_states, inputs)
-
-        # A shape [n,] TF Tensor of objectives (one per initial state) to be
-        # combined in _run_optimization_loop.
-        q = 0.5 * tf.reduce_sum(tf.square(F - x), axis=1)
-
-        xstar, F_xstar, qstar, dq, n_iters = self._run_optimization_loop(
-            q, x, F)
-
-        fps = FixedPoints(
-            xstar=xstar,
-            x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_states),
-            inputs=inputs,
-            F_xstar=F_xstar,
-            qstar=qstar,
-            dq=dq,
-            n_iters=n_iters,
-            tol_unique=self.tol_unique,
-            dtype=self.np_dtype)
-
-        return fps
-
-    def _run_sequential_optimizations(self, initial_states, inputs,
-                                      q_prior=None):
-        '''Finds fixed points sequentially, running an optimization from one
-        initial state at a time.
+    @property
+    def _state_size(self):
+        ''' Gets the state size of the RNN. For an LSTM, here state size is
+        defined by the concatenated (hidden, cell) size.
 
         Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_states] numpy arrays. These data specify the initial
-            states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
-
-            inputs: An [n x n_inputs] numpy array specifying a set of constant
-            inputs into the RNN.
-
-            q_prior (optional): An [n,] numpy array containing q values from a
-            previous optimization round. Provide these if performing
-            additional optimization iterations on a subset of outlier
-            candidate fixed points. Default: None.
+            None
 
         Returns:
-            fps: A FixedPoints object containing the optimized fixed points
-            and associated metadata.
-
+            An int specifying the size of the RNN's state.
         '''
 
-        is_fresh_start = q_prior is None
+        if self.is_lstm:
+            return self.rnn_cell.state_size[0] + self.rnn_cell.state_size[1]
+        else:
+            return self.rnn_cell.state_size
 
-        if is_fresh_start:
-            self._print_if_verbose('\tFinding fixed points via '
-                                   'sequential optimizations...')
+    @staticmethod
+    def _add_gaussian_noise(data, noise_scale=0.0, rng=npr.RandomState(0)):
+        '''
+        Args:
+            data: Numpy array.
 
-        n_inits, n_states = tf_utils.safe_shape(initial_states)
-        n_inputs = inputs.shape[1]
+            noise_scale: (Optional) non-negative scalar indicating the
+            standard deviation of the Gaussian noise samples to be generated.
+            Default: 0.0.
 
-        # Allocate memory for storing results
-        fps = FixedPoints(do_alloc_nan=True,
-                          n=n_inits,
-                          n_states=n_states,
-                          n_inputs=n_inputs,
-                          dtype=self.np_dtype)
+            rng:
 
-        for init_idx in range(n_inits):
+        Returns:
+            Numpy array with shape matching that of data.
 
-            index = slice(init_idx, init_idx+1)
+        Raises:
+            ValueError if noise_scale is negative.
+        '''
 
-            initial_states_i = tf_utils.safe_index(initial_states, index)
-            inputs_i = inputs[index, :]
-
-            if is_fresh_start:
-                self._print_if_verbose('\n\tInitialization %d of %d:' %
-                    (init_idx+1, n_inits))
-            else:
-                self._print_if_verbose('\n\tOutlier %d of %d (q=%.2e):' %
-                    (init_idx+1, n_inits, q_prior[init_idx]))
-
-            fps[init_idx] = self._run_single_optimization(
-                initial_states_i, inputs_i)
-
-        return fps
+        # Add IID Gaussian noise
+        if noise_scale == 0.0:
+            return data # no noise to add
+        if noise_scale > 0.0:
+            return data + noise_scale * rng.randn(*data.shape)
+        elif noise_scale < 0.0:
+            raise ValueError('noise_scale must be non-negative,'
+                             ' but was %f' % noise_scale)
 
     @staticmethod
     def identify_q_outliers(fps, q_thresh):
@@ -683,6 +623,122 @@ class FixedPointFinder(object):
             return tf_utils.convert_to_LSTMStateTuple(states)
         else:
             return states
+
+    def _print_if_verbose(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, **kwargs)
+
+    # *************************************************************************
+    # Tensorflow Core (these functions will be updated in the revision) *******
+    # *************************************************************************
+
+    def _run_joint_optimization(self, initial_states, inputs):
+        '''Finds multiple fixed points via a joint optimization over multiple
+        state vectors.
+
+        Args:
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: A [n x n_inputs] numpy array specifying a set of constant
+            inputs into the RNN.
+
+        Returns:
+            fps: A FixedPoints object containing the optimized fixed points
+            and associated metadata.
+        '''
+        self._print_if_verbose('\tFinding fixed points '
+                               'via joint optimization.')
+
+        n, _ = tf_utils.safe_shape(initial_states)
+
+        x, F = self._grab_RNN(initial_states, inputs)
+
+        # A shape [n,] TF Tensor of objectives (one per initial state) to be
+        # combined in _run_optimization_loop.
+        q = 0.5 * tf.reduce_sum(tf.square(F - x), axis=1)
+
+        xstar, F_xstar, qstar, dq, n_iters = self._run_optimization_loop(
+            q, x, F)
+
+        fps = FixedPoints(
+            xstar=xstar,
+            x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_states),
+            inputs=inputs,
+            F_xstar=F_xstar,
+            qstar=qstar,
+            dq=dq,
+            n_iters=n_iters,
+            tol_unique=self.tol_unique,
+            dtype=self.np_dtype)
+
+        return fps
+
+    def _run_sequential_optimizations(self, initial_states, inputs,
+                                      q_prior=None):
+        '''Finds fixed points sequentially, running an optimization from one
+        initial state at a time.
+
+        Args:
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: An [n x n_inputs] numpy array specifying a set of constant
+            inputs into the RNN.
+
+            q_prior (optional): An [n,] numpy array containing q values from a
+            previous optimization round. Provide these if performing
+            additional optimization iterations on a subset of outlier
+            candidate fixed points. Default: None.
+
+        Returns:
+            fps: A FixedPoints object containing the optimized fixed points
+            and associated metadata.
+
+        '''
+
+        is_fresh_start = q_prior is None
+
+        if is_fresh_start:
+            self._print_if_verbose('\tFinding fixed points via '
+                                   'sequential optimizations...')
+
+        n_inits, n_states = tf_utils.safe_shape(initial_states)
+        n_inputs = inputs.shape[1]
+
+        # Allocate memory for storing results
+        fps = FixedPoints(do_alloc_nan=True,
+                          n=n_inits,
+                          n_states=n_states,
+                          n_inputs=n_inputs,
+                          dtype=self.np_dtype)
+
+        for init_idx in range(n_inits):
+
+            index = slice(init_idx, init_idx+1)
+
+            initial_states_i = tf_utils.safe_index(initial_states, index)
+            inputs_i = inputs[index, :]
+
+            if is_fresh_start:
+                self._print_if_verbose('\n\tInitialization %d of %d:' %
+                    (init_idx+1, n_inits))
+            else:
+                self._print_if_verbose('\n\tOutlier %d of %d (q=%.2e):' %
+                    (init_idx+1, n_inits, q_prior[init_idx]))
+
+            fps[init_idx] = self._run_single_optimization(
+                initial_states_i, inputs_i)
+
+        return fps
 
     def _grab_RNN(self, initial_states, inputs):
         '''Creates objects for interfacing with the RNN.
@@ -984,26 +1040,3 @@ class FixedPointFinder(object):
         J_np = self.session.run(J_tf)
 
         return J_np
-
-    def _print_if_verbose(self, *args, **kwargs):
-        if self.verbose:
-            print(*args, **kwargs)
-
-    ''' Work in progress toward rewriting everything the right way.
-    Current code adds new TF ops to the graph each time a TF-inducing
-    function is called. This was a quick and dirty implementation. The right
-    way to do everything is to setup the graph once in __init__() using
-    tf.placeholders. No new TF ops should be added to the graph after
-    that--this way runtimes will be constant regardless of how the user
-    interacts with the FPF class.
-
-    def _setup_jacobian_ops(self, F_tf):
-        x_tf = tf.placeholder(...)
-
-        try:
-           J_tf = pfor.batch_jacobian(F_tf, x_tf)
-        except absl.flags._exceptions.UnparsedFlagAccessError:
-           J_tf = pfor.batch_jacobian(F_tf, x_tf, use_pfor=False)
-
-        return J_tf
-    '''
