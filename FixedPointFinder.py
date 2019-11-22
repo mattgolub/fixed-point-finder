@@ -25,7 +25,8 @@ import tf_utils
 class FixedPointFinder(object):
 
     def __init__(self, rnn_cell, sess,
-        tol=1e-20,
+        tol_q=1e-12,
+        tol_dq=1e-20,
         max_iters=5000,
         method='joint',
         do_rerun_q_outliers=False,
@@ -44,13 +45,20 @@ class FixedPointFinder(object):
         rnn_cell_feed_dict=dict()):
         '''Creates a FixedPointFinder object.
 
+        Optimization terminates once every initialization satifies one or both of the following criteria:
+            1. q < tol_q
+            2. dq < tol_dq * learning_rate
+
         Args:
             rnn_cell: A Tensorflow RNN cell, which has been initialized or
             restored in the Tensorflow session, 'sess'.
 
-            tol (optional): A positive scalar specifying the optimization
-            termination criteria on improvement in the objective function.
-            Default: 1e-20.
+            tol_q (optional): A positive scalar specifying the optimization
+            termination criteria on each q-value. Default: 1e-12.
+
+            tol_dq (optional): A positive scalar specifying the optimization
+            termination criteria on the improvement of each q-value (i.e.,
+            "dq") from one optimization iteration to the next. Default: 1e-20.
 
             max_iters (optional): A non-negative integer specifying the
             maximum number of gradient descent iterations allowed.
@@ -142,7 +150,8 @@ class FixedPointFinder(object):
         # *********************************************************************
         # Optimization hyperparameters ****************************************
         # *********************************************************************
-        self.tol = tol
+        self.tol_q = tol_q
+        self.tol_dq = tol_dq
         self.method = method
         self.max_iters = max_iters
         self.do_rerun_q_outliers = do_rerun_q_outliers
@@ -662,8 +671,8 @@ class FixedPointFinder(object):
         # combined in _run_optimization_loop.
         q = 0.5 * tf.reduce_sum(tf.square(F - x), axis=1)
 
-        xstar, F_xstar, qstar, dq, n_iters = self._run_optimization_loop(
-            q, x, F)
+        xstar, F_xstar, qstar, dq, n_iters = \
+            self._run_optimization_loop(q, x, F)
 
         fps = FixedPoints(
             xstar=xstar,
@@ -983,7 +992,10 @@ class FixedPointFinder(object):
                 np.mod(iter_count, self.n_iters_per_print_update)==0:
                 print_update(iter_count, ev_q, ev_dq, iter_learning_rate)
 
-            if iter_count > 1 and np.max(ev_dq) < self.tol*iter_learning_rate:
+            if iter_count > 1 and \
+                np.all(np.logical_or(
+                    ev_dq < self.tol_dq*iter_learning_rate,
+                    ev_q < self.tol_q)):
                 '''Here dq is scaled by the learning rate. Otherwise very
                 small steps due to very small learning rates would spuriously
                 indicate convergence. This scaling is roughly equivalent to
