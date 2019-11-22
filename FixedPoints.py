@@ -33,6 +33,8 @@ class FixedPoints(object):
                  dq=None,
                  n_iters=None,
                  J_xstar=None,
+                 eigval_J_xstar=None,
+                 eigvec_J_xstar=None,
                  do_alloc_nan=False,
                  n=None,
                  n_states=None,
@@ -85,9 +87,12 @@ class FixedPoints(object):
             which results in an appropriately sized numpy array of NaNs.
             Default: None.
 
-            do_alloc_nan: Bool indicating whether to initialize all data attributes (all optional args above) as NaN-filled numpy arrays.
-            If True, n, n_states and n_inputs must be provided. These values
-            are otherwise ignored:
+            do_alloc_nan: Bool indicating whether to initialize all data
+            attributes (all optional args above) as NaN-filled numpy arrays.
+            Default: False.
+
+                If True, n, n_states and n_inputs must be provided. These values
+                are otherwise ignored:
 
                 n: Positive int specifying the number of fixed points to
                 allocate space for.
@@ -98,12 +103,11 @@ class FixedPoints(object):
                 n_inputs: Positive int specifying the dimensionality of the
                 network inputs.
 
-            tol_unique: Positive scalar specifying the numerical
-            precision required to label two fixed points as being unique from
-            one another. Two fixed points will be considered unique if they
-            differ by this amount (or more) along any dimension. This
-            tolerance is used to discard numerically similar fixed points.
-            Default: 1e-3.
+            tol_unique: Positive scalar specifying the numerical precision
+            required to label two fixed points as being unique from one
+            another. Two fixed points will be considered unique if they differ
+            by this amount (or more) along any dimension. This tolerance is
+            used to discard numerically similar fixed points. Default: 1e-3.
 
             dtype: Data type for representing all of the object's data.
             Default: numpy.float32.
@@ -132,7 +136,7 @@ class FixedPoints(object):
 
         if do_alloc_nan:
             if n is None:
-                raise ValueError(       'n must be provided if '
+                raise ValueError('n must be provided if '
                                  'do_alloc_nan == True.')
             if n_states is None:
                 raise ValueError('n_states must be provided if '
@@ -153,6 +157,10 @@ class FixedPoints(object):
             self.dq = self._alloc_nan((n))
             self.n_iters = self._alloc_nan((n))
             self.J_xstar = self._alloc_nan((n, n_states, n_states))
+
+            self.eigval_J_xstar = self._alloc_nan((n, n_states))
+            self.eigvec_J_xstar = self._alloc_nan((n, n_states, n_states))
+            self.has_decomposed_Jacobians = False
 
         else:
             if xstar is not None:
@@ -182,6 +190,10 @@ class FixedPoints(object):
             self.dq = dq
             self.n_iters = n_iters
             self.J_xstar = J_xstar
+            self.eigval_J_xstar = eigval_J_xstar
+            self.eigvec_J_xstar = eigvec_J_xstar
+
+        self.has_decomposed_Jacobians = eigval_J_xstar is not None
 
     def _alloc_nan(self, shape, dtype=None):
         '''Returns a nan-filled numpy array.
@@ -243,6 +255,34 @@ class FixedPoints(object):
 
         return self[idx]
 
+    def update(self, new_fps):
+        ''' Combines the entries from another FixedPoints object into this object.
+
+        Args:
+            new_fps: a FixedPoints object containing the entries to be
+            incorporated into this FixedPoints object.
+
+        Returns:
+            None
+        '''
+        self.xstar = np.concatenate((self.xstar, new_fps.xstar), axis=0)
+        self.x_init = np.concatenate((self.x_init, new_fps.x_init), axis=0)
+        self.inputs = np.concatenate((self.inputs, new_fps.inputs), axis=0)
+        self.F_xstar = np.concatenate((self.F_xstar, new_fps.F_xstar), axis=0)
+        self.qstar = np.concatenate((self.qstar, new_fps.qstar), axis=0)
+        self.dq = np.concatenate((self.dq, new_fps.dq), axis=0)
+        self.n_iters = np.concatenate((self.n_iters, new_fps.n_iters), axis=0)
+        self.J_xstar = np.concatenate((self.J_xstar, new_fps.J_xstar), axis=0)
+        self.n = self.n + new_fps.n
+
+        if self.has_decomposed_Jacobians and new_fps.has_decomposed_Jacobians:
+            self.eigval_J_xstar = np.concatenate(
+                (self.eigval_J_xstar, new_fps.eigval_J_xstar), axis=0)
+            self.eigvec_J_xstar = np.concatenate(
+                (self.eigvec_J_xstar, new_fps.eigvec_J_xstar), axis=0)
+        elif self.has_decomposed_Jacobians != new_fps.has_decomposed_Jacobians:
+            raise ValueError('One but not both FixedPoints objects have decomposed Jacobians. FixedPoints.update does not currently support this configuration.')
+
     def decompose_Jacobians(self, do_batch=True):
         '''Adds the following fields to the FixedPoints object:
 
@@ -253,6 +293,10 @@ class FixedPoints(object):
         eigvec_J_xstar[i, :, :] containing the eigenvectors of
         J_xstar[i, :, :].
         '''
+
+        if self.has_decomposed_Jacobians:
+            print('Jacobians have already been decomposed, not repeating.')
+            return
 
         n = self.n # number of FPs represented in this object
         n_states = self.n_states # dimensionality of each state
@@ -297,6 +341,8 @@ class FixedPoints(object):
 
             self.eigval_J_xstar = np.concatenate(e_vals, axis=0)
             self.eigvec_J_xstar = np.concatenate(e_vecs, axis=0)
+
+        self.has_decomposed_Jacobians = True
 
     def __setitem__(self, index, fps):
         '''Implements the assignment opperator.
@@ -364,6 +410,13 @@ class FixedPoints(object):
         n_iters = self._safe_index(self.n_iters, index)
         J_xstar = self._safe_index(self.J_xstar, index)
 
+        if self.has_decomposed_Jacobians:
+            eigval_J_xstar = self._safe_index(self.eigval_J_xstar, index)
+            eigvec_J_xstar = self._safe_index(self.eigvec_J_xstar, index)
+        else:
+            eigval_J_xstar = None
+            eigvec_J_xstar = None
+
         dtype = self.dtype
         tol_unique = self.tol_unique
 
@@ -375,6 +428,8 @@ class FixedPoints(object):
             dq=dq,
             n_iters=n_iters,
             J_xstar = J_xstar,
+            eigval_J_xstar=eigval_J_xstar,
+            eigvec_J_xstar=eigvec_J_xstar,
             dtype=dtype,
             tol_unique=tol_unique)
 
