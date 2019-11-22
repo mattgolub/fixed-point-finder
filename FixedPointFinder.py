@@ -35,6 +35,7 @@ class FixedPointFinder(object):
         outlier_distance_scale=10.0,
         tol_unique=1e-3,
         do_compute_jacobians=True,
+        do_decompose_jacobians=True,
         tf_dtype=tf.float32,
         verbose=True,
         super_verbose=False,
@@ -107,6 +108,9 @@ class FixedPointFinder(object):
             do_compute_jacobians (optional): A bool specifying whether or not
             to compute the Jacobian at each fixed point. Default: True.
 
+            do_decompose_jacobians (optional): A bool specifying whether or not
+            to eigen-decompose each fixed point's Jacobian. Default: True.
+
             tf_dtype: Data type to use for all TensorFlow ops. The
             corresponding numpy data type is used for numpy objects and
             operations.
@@ -160,6 +164,7 @@ class FixedPointFinder(object):
         self.outlier_distance_scale = outlier_distance_scale
         self.tol_unique = tol_unique
         self.do_compute_jacobians = do_compute_jacobians
+        self.do_decompose_jacobians = do_decompose_jacobians
         self.verbose = verbose
         self.super_verbose = super_verbose
         self.n_iters_per_print_update = n_iters_per_print_update
@@ -359,6 +364,9 @@ class FixedPointFinder(object):
                                    'unique fixed points.' % unique_fps.n)
             J_xstar = self._compute_multiple_jacobians_np(unique_fps)
             unique_fps.J_xstar = J_xstar
+
+            if self.do_decompose_jacobians:
+                unique_fps.decompose_jacobians()
 
         self._print_if_verbose('\n\tFixed point finding complete.\n')
 

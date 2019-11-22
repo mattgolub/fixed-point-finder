@@ -18,6 +18,7 @@ sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
 from FlipFlop import FlipFlop
 from FixedPointFinder import FixedPointFinder
 from FixedPoints import FixedPoints
+from plot_utils import plot_fps
 
 # ***************************************************************************
 # STEP 1: Train an RNN to solve the N-bit memory task ***********************
@@ -92,7 +93,7 @@ unique_fps, all_fps = fpf.find_fixed_points(initial_states, inputs)
 
 # Visualize identified fixed points with overlaid RNN state trajectories
 # All visualized in the 3D PCA space fit the the example RNN states.
-unique_fps.plot(example_predictions['state'],
+plot_fps(unique_fps, example_predictions['state'],
     plot_batch_idx=range(30),
     plot_start_time=10)
 
