@@ -366,9 +366,9 @@ class FixedPointFinder(object):
             unique_fps.J_xstar = J_xstar
 
             if self.do_decompose_jacobians:
-                unique_fps.decompose_jacobians()
+                unique_fps.decompose_jacobians(str_prefix='\t')
 
-        self._print_if_verbose('\n\tFixed point finding complete.\n')
+        self._print_if_verbose('\tFixed point finding complete.\n')
 
         return unique_fps, all_fps
 
