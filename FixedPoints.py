@@ -19,6 +19,22 @@ class FixedPoints(object):
     A class for storing fixed points and associated data.
     '''
 
+    # List of class attributes
+    # All of these refer to Numpy arrays with axis 0 as the batch dimension.
+    # Thus, each is concatenatable using np.concatenate(..., axis=0).
+    _data_attrs = [
+            'xstar',
+            'x_init',
+            'inputs',
+            'F_xstar',
+            'qstar',
+            'dq',
+            'n_iters',
+            'J_xstar',
+            'eigval_J_xstar',
+            'eigvec_J_xstar'
+            ]
+
     def __init__(self,
                  xstar=None,
                  x_init=None,
@@ -187,8 +203,7 @@ class FixedPoints(object):
             self.J_xstar = J_xstar
             self.eigval_J_xstar = eigval_J_xstar
             self.eigvec_J_xstar = eigvec_J_xstar
-
-        self.has_decomposed_jacobians = eigval_J_xstar is not None
+            self.has_decomposed_jacobians = eigval_J_xstar is not None
 
     def _alloc_nan(self, shape, dtype=None):
         '''Returns a nan-filled numpy array.
@@ -250,8 +265,35 @@ class FixedPoints(object):
 
         return self[idx]
 
+    @staticmethod
+    def concatenate(fps_seq):
+        ''' Join a sequence of FixedPoints objects.
+
+        Args:
+            fps_seq: sequence of FixedPoints objects. All FixedPoints objects must have the following attributes in common:
+                n_states
+                n_inputs
+                has_decomposed_jacobians
+
+        Returns:
+            A FixedPoints objects containing the concatenated FixedPoints data.
+        '''
+
+        kwargs = {}
+        for attr_name in FixedPoints._data_attrs:
+            if all((hasattr(fps, attr_name) for fps in fps_seq)):
+                cat_list = [getattr(fps, attr_name) for fps in fps_seq]
+                cat_attr = np.concatenate(cat_list, axis=0)
+                kwargs[attr_name] = cat_attr
+
+        return FixedPoints(**kwargs)
+
     def update(self, new_fps):
-        ''' Combines the entries from another FixedPoints object into this object.
+        ''' Combines the entries from another FixedPoints object into this
+        object.
+
+        All non-data class attributes remain as in this FixedPoints object
+        (e.g., tol_unique, dtype, verbose).
 
         Args:
             new_fps: a FixedPoints object containing the entries to be
@@ -259,24 +301,25 @@ class FixedPoints(object):
 
         Returns:
             None
-        '''
-        self.xstar = np.concatenate((self.xstar, new_fps.xstar), axis=0)
-        self.x_init = np.concatenate((self.x_init, new_fps.x_init), axis=0)
-        self.inputs = np.concatenate((self.inputs, new_fps.inputs), axis=0)
-        self.F_xstar = np.concatenate((self.F_xstar, new_fps.F_xstar), axis=0)
-        self.qstar = np.concatenate((self.qstar, new_fps.qstar), axis=0)
-        self.dq = np.concatenate((self.dq, new_fps.dq), axis=0)
-        self.n_iters = np.concatenate((self.n_iters, new_fps.n_iters), axis=0)
-        self.J_xstar = np.concatenate((self.J_xstar, new_fps.J_xstar), axis=0)
-        self.n = self.n + new_fps.n
 
-        if self.has_decomposed_jacobians and new_fps.has_decomposed_jacobians:
-            self.eigval_J_xstar = np.concatenate(
-                (self.eigval_J_xstar, new_fps.eigval_J_xstar), axis=0)
-            self.eigvec_J_xstar = np.concatenate(
-                (self.eigvec_J_xstar, new_fps.eigvec_J_xstar), axis=0)
-        elif self.has_decomposed_jacobians != new_fps.has_decomposed_jacobians:
-            raise ValueError('One but not both FixedPoints objects have decomposed Jacobians. FixedPoints.update does not currently support this configuration.')
+        Raises:
+            ValueError if any data attributes are found in one but not both
+            FixedPoints objects (especially relevant for decomposed Jacobians).
+        '''
+
+        for attr_name in self._data_attrs:
+            this_has = hasattr(self, attr_name)
+            that_has = hasattr(new_fps, attr_name)
+            if this_has and that_has:
+                cat_attr = np.concatenate(
+                    (getattr(self, attr_name),
+                    getattr(new_fps, attr_name)),
+                    axis=0)
+                setattr(self, attr_name, cat_attr)
+            elif this_has != that_has:
+                raise ValueError('One but not both FixedPoints objects have %s. FixedPoints.update does not currently support this configuration.' % attr_name)
+
+        self.n = self.n + new_fps.n
 
     def decompose_jacobians(self, do_batch=True, str_prefix=''):
         '''Adds the following fields to the FixedPoints object:
@@ -306,20 +349,18 @@ class FixedPoints(object):
 
             if np.all(valid_J_idx):
                 # No NaNs, nothing to worry about.
-                e_vals, e_vecs = np.linalg.eig(self.J_xstar)
+                e_vals_unsrt, e_vecs_unsrt = np.linalg.eig(self.J_xstar)
             else:
                 # Set eigen-data to NaN if there are any NaNs in the
                 # corresponding Jacobian.
-                e_vals = self._alloc_nan(
+                e_vals_unsrt = self._alloc_nan(
                     (n, n_states), dtype=np.complex64)
-                e_vecs = self._alloc_nan(
+                e_vecs_unsrt = self._alloc_nan(
                     (n, n_states, n_states), dtype=np.complex64)
 
-                e_vals[valid_J_idx], e_vecs[valid_J_idx] = \
+                e_vals_unsrt[valid_J_idx], e_vecs_unsrt[valid_J_idx] = \
                     np.linalg.eig(self.J_xstar[valid_J_idx])
 
-            self.eigval_J_xstar = e_vals
-            self.eigvec_J_xstar = e_vecs
         else:
             print('%sDecomposing Jacobians one-at-a-time.' % str_prefix)
             e_vals = []
@@ -335,8 +376,24 @@ class FixedPoints(object):
                 e_vals.append(np.expand_dims(e_vals_i, axis=0))
                 e_vecs.append(np.expand_dims(e_vecs_i, axis=0))
 
-            self.eigval_J_xstar = np.concatenate(e_vals, axis=0)
-            self.eigvec_J_xstar = np.concatenate(e_vecs, axis=0)
+            e_vals_unsrt = np.concatenate(e_vals, axis=0)
+            e_vecs_unsrt = np.concatenate(e_vecs, axis=0)
+
+        print('%sSorting by Eigenvalue magnitude.' % str_prefix)
+        # Sort by eigenvalue magnitude in decreasing order
+        sort_idx = np.argsort(np.abs(e_vals_unsrt))[:,::-1]
+
+        # Apply the sort
+        # There must be a faster way, but I'm lazy to find it at the moment
+        self.eigval_J_xstar = \
+            self._alloc_nan((n, n_states), dtype=np.complex64)
+        self.eigvec_J_xstar = \
+            self._alloc_nan((n, n_states, n_states), dtype=np.complex64)
+
+        for k in range(n):
+            sort_idx_k = sort_idx[k]
+            self.eigval_J_xstar[k] = e_vals_unsrt[k][sort_idx_k]
+            self.eigvec_J_xstar[k] = e_vecs_unsrt[k][:, sort_idx_k]
 
         self.has_decomposed_jacobians = True
 
@@ -358,6 +415,15 @@ class FixedPoints(object):
             # Force the indexing that follows to preserve numpy array ndim
             index = range(index, index+1)
 
+        ''' Future work, test the following replacement for the rest of the
+        code in this function.
+
+        for attr_name in self._data_attrs:
+            attr = getattr(self, attr_name)
+            if attr is not None:
+                attr[index] = getattr(fps, attr_name)
+        '''
+
         if self.xstar is not None:
             self.xstar[index] = fps.xstar
 
@@ -378,6 +444,10 @@ class FixedPoints(object):
 
         if self.J_xstar is not None:
             self.J_xstar[index] = fps.J_xstar
+
+        if self.has_decomposed_jacobians:
+            self.eigval_J_xstar[index] = fps.eigval_J_xstar
+            self.eigvec_J_xstar[index] = fps.eigvec_J_xstar
 
     def __getitem__(self, index):
         '''Indexes into a subset of the fixed points and their associated data.
