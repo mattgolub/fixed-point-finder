@@ -60,7 +60,10 @@ of the network. Because a well-trained network transitions instantaneously
 from one stable state to another, observed networks states spend little if any
 time near the unstable fixed points. In order to identify ALL fixed points,
 noise must be added to the initial states before handing them to the fixed
-point finder.'''
+point finder. In this example, the noise needed is rather large, which can
+lead to identifying fixed points well outside of the domain of states observed
+in realistic behavior of the network--such fixed points can be safely ignored
+when interpreting the dynamical landscape (but can throw visualizations).'''
 NOISE_SCALE = 0.5 # Standard deviation of noise added to initial states
 N_INITS = 1024 # The number of initial states to provide
 
