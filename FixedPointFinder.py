@@ -20,6 +20,7 @@ import absl
 from FixedPoints import FixedPoints
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
+from Timer import Timer
 import tf_utils
 
 class FixedPointFinder(object):
@@ -34,6 +35,7 @@ class FixedPointFinder(object):
         do_exclude_distance_outliers=True,
         outlier_distance_scale=10.0,
         tol_unique=1e-3,
+        max_n_unique=np.inf,
         do_compute_jacobians=True,
         do_decompose_jacobians=True,
         tf_dtype=tf.float32,
@@ -105,6 +107,10 @@ class FixedPointFinder(object):
             tolerance is used to discard numerically similar fixed points.
             Default: 1e-3.
 
+            max_n_unique (optional): A positive integer indicating the max
+            number of unique fixed points to keep. If the number of unique
+            fixed points identified exceeds this value, points are randomly dropped. Default: np.inf.
+
             do_compute_jacobians (optional): A bool specifying whether or not
             to compute the Jacobian at each fixed point. Default: True.
 
@@ -163,6 +169,7 @@ class FixedPointFinder(object):
         self.do_exclude_distance_outliers = do_exclude_distance_outliers
         self.outlier_distance_scale = outlier_distance_scale
         self.tol_unique = tol_unique
+        self.max_n_unique = max_n_unique
         self.do_compute_jacobians = do_compute_jacobians
         self.do_decompose_jacobians = do_decompose_jacobians
         self.verbose = verbose
@@ -344,7 +351,7 @@ class FixedPointFinder(object):
         unique_fps = all_fps.get_unique()
 
         self._print_if_verbose('\tIdentified %d unique fixed points.' %
-                               unique_fps.n)
+            unique_fps.n)
 
         if self.do_exclude_distance_outliers:
             unique_fps = \
@@ -359,13 +366,23 @@ class FixedPointFinder(object):
             # Filter out duplicates after from the second optimization round
             unique_fps = unique_fps.get_unique()
 
+        # Optionally subselect from the unique fixed points (e.g., for
+        # computational savings when not all are needed.)
+        if unique_fps.n > self.max_n_unique:
+            self._print_if_verbose('\tRandomly selecting %d unique '
+            'fixed points to keep.' % self.max_n_unique)
+            idx_keep = np.random.choice(
+                unique_fps.n, self.max_n_unique, replace=False)
+            unique_fps = unique_fps[idx_keep]
+
         if self.do_compute_jacobians:
             self._print_if_verbose('\tComputing Jacobian at %d '
                                    'unique fixed points.' % unique_fps.n)
-            J_xstar = self._compute_multiple_jacobians_np(unique_fps)
-            unique_fps.J_xstar = J_xstar
+            J_np, J_tf = self._compute_multiple_jacobians_np(unique_fps)
+            unique_fps.J_xstar = J_np
 
             if self.do_decompose_jacobians:
+                # self._test_decompose_jacobians(unique_fps, J_np, J_tf)
                 unique_fps.decompose_jacobians(str_prefix='\t')
 
         self._print_if_verbose('\tFixed point finding complete.\n')
@@ -1059,4 +1076,90 @@ class FixedPointFinder(object):
 
         J_np = self.session.run(J_tf)
 
-        return J_np
+        return J_np, J_tf
+
+    # *************************************************************************
+    # In development: *********************************************************
+    # *************************************************************************
+
+    '''Playing around to see if Jacobian decomposition can be done faster if
+    done in Tensorflow (currently it is done in numpy--see FixedPoints.py).
+
+    Answer: empirically TF might be a lot faster, but I haven't yet figured out
+    how to get complex eigenvalues out of TF (and if possible, that might
+    reduce some of the speedup).
+
+    What I've seen:
+        TF, giving real results only (not completx), is ~4x faster on ~100-128D
+        GRU states. Comparison is with single 1080-TI GPU compared to 32-core
+        I9 CPU (that seems to be fully utilized by numpy).
+
+    How to complete?:
+        It's not as simple as changing the dtype of the states to tf.complex64.
+        This fails because the RNNs are typically built with dtype=tf.float32
+        (as specified by their inputs and ICs).
+
+        Creating new TF constants / variables (as in _J2 / _J3 below), returns
+        complex data types, but imaginary component is always 0, so...wrong.
+        Not surprisingly, values differ from the corresponding numpy
+        calculation, which is well-vetted.
+    '''
+    def _test_decompose_jacobians(self, unique_fps, J_np, J_tf):
+
+        def decompose_J1(J_tf):
+            e_tf, v_tf = tf.linalg.eigh(J_tf)
+            e_np, v_np = self.session.run([e_tf, v_tf])
+            return e_np, v_np
+
+        def decompose_J2(J_np):
+            J_tf = tf.constant(J_np, dtype=tf.complex64)
+            return decompose_J1(J_tf)
+
+        def decompose_J3(J_np):
+            J_tf = tf.Variable(np.complex64(J_np))
+
+            init = tf.variables_initializer(var_list=[J_tf])
+            self.session.run(init)
+
+            return decompose_J1(J_tf)
+
+        timer_eigs = Timer(3)
+        timer_eigs.start()
+
+        self._print_if_verbose(
+            '\tDecomposing Jacobians in Tensorflow....')
+
+        # This gives real result (not complex)
+        # evals, evecs = decompose_J1(J_tf)
+
+        # This returns complex data type, but imaginary components are all 0!
+        e2, v2 = decompose_J2(J_np)
+        timer_eigs.split('TF v2')
+
+        # This returns complex data type, but imaginary components are all 0!
+        e3, v3 = decompose_J3(J_np)
+        timer_eigs.split('TF v3')
+
+        self._print_if_verbose('\t\tDone.')
+
+        unique_fps.decompose_jacobians(str_prefix='\t')
+        timer_eigs.split('NP eigs')
+
+        timer_eigs.disp()
+
+        '''Look at differences in leading eigenvalue:'''
+
+        # TF sorts in ascending order using REAL PART ONLY. This is a fair
+        # comparison since TF is used for both (and thus sorting is the same).
+        tf2_vs_tf3 = np.mean(np.abs(e2[:,-1] - e3[:,-1]))
+        print('mean abs difference between leading eig-val using TF methods 2 and 3: %.3e' % tf2_vs_tf3)
+
+        # PROBLEM: FixedPoints sorts in descending order by magnitude. Thus,
+        # this is not guaranteed to compare the same eigenvalues, even if both
+        # computations are correct. Likely ok for rough comparison since the
+        # eigenvalue with the largest real component is typically the one with
+        # the largest magnitude--but this is rough. In the current setting, TF
+        # computations are returning 0 imaginary component, so real = mag.
+        np_vs_tf = np.mean(np.abs(unique_fps.eigval_J_xstar[:,0] - e3[:,-1]))
+
+        pdb.set_trace()
