@@ -414,8 +414,12 @@ class FlipFlop(RecurrentWhisperer):
 
         return {'inputs': inputs, 'output': output}
 
-    def _update_visualizations(self, train_data=None, valid_data=None):
+    def _update_visualizations(self,
+        train_data=None,
+        valid_data=None,
+        is_final=False):
         '''See docstring in RecurrentWhisperer.'''
+
         data = self.generate_flipflop_trials()
         self.plot_trials(data)
         self.refresh_figs()
