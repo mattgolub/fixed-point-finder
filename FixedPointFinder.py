@@ -1085,24 +1085,15 @@ class FixedPointFinder(object):
     '''Playing around to see if Jacobian decomposition can be done faster if
     done in Tensorflow (currently it is done in numpy--see FixedPoints.py).
 
-    Answer: empirically TF might be a lot faster, but I haven't yet figured out
-    how to get complex eigenvalues out of TF (and if possible, that might
-    reduce some of the speedup).
+    Answer: empirically TF might be a lot faster, but as of Dec 2019 there does
+    not appear to be a full eigendecomposition available in Tensorflow. What is
+    available only supports self adjoint matrices, which in general, will not
+    match results from numpy.linalg.eig.
 
     What I've seen:
-        TF, giving real results only (not completx), is ~4x faster on ~100-128D
-        GRU states. Comparison is with single 1080-TI GPU compared to 32-core
-        I9 CPU (that seems to be fully utilized by numpy).
-
-    How to complete?:
-        It's not as simple as changing the dtype of the states to tf.complex64.
-        This fails because the RNNs are typically built with dtype=tf.float32
-        (as specified by their inputs and ICs).
-
-        Creating new TF constants / variables (as in _J2 / _J3 below), returns
-        complex data types, but imaginary component is always 0, so...wrong.
-        Not surprisingly, values differ from the corresponding numpy
-        calculation, which is well-vetted.
+        TF is ~4x faster on ~100-128D GRU states. Comparison is with single
+        1080-TI GPU compared to 32-core I9 CPU (that seems to be fully utilized
+        by numpy).
     '''
     def _test_decompose_jacobians(self, unique_fps, J_np, J_tf):
 
