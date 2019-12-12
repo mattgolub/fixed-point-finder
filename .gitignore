@@ -5,3 +5,4 @@ checkpoint
 events.out.tfevents*
 *.pkl
 *.pyc
+*.sublime-workspace
