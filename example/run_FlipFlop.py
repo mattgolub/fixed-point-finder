@@ -25,7 +25,7 @@ from plot_utils import plot_fps
 # ***************************************************************************
 
 # Hyperparameters for AdaptiveLearningRate
-alr_hps = {'initial_rate': 0.1}
+alr_hps = {'initial_rate': 1.0, 'min_rate': 1e-5}
 
 # Hyperparameters for FlipFlop
 # See FlipFlop.py for detailed descriptions.
@@ -33,7 +33,6 @@ hps = {
     'rnn_type': 'lstm',
     'n_hidden': 16,
     'min_loss': 1e-4,
-    'min_learning_rate': 1e-5,
     'log_dir': './logs/',
     'data_hps': {
         'n_batch': 512,
