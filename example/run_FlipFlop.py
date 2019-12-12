@@ -87,7 +87,6 @@ example_predictions = ff.predict(example_trials,
                                  do_predict_full_LSTM_state=is_lstm)
 initial_states = fpf.sample_states(example_predictions['state'],
                                    n_inits=N_INITS,
-                                   rng=ff.rng,
                                    noise_scale=NOISE_SCALE)
 
 # Run the fixed point finder

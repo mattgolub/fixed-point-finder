@@ -11,7 +11,6 @@ from __future__ import print_function
 
 import pdb
 import numpy as np
-import numpy.random as npr
 import time
 import tensorflow as tf
 from tensorflow.python.ops import parallel_for as pfor
@@ -39,6 +38,7 @@ class FixedPointFinder(object):
         do_compute_jacobians=True,
         do_decompose_jacobians=True,
         tf_dtype=tf.float32,
+        rng=None,
         verbose=True,
         super_verbose=False,
         n_iters_per_print_update=100,
@@ -48,7 +48,7 @@ class FixedPointFinder(object):
         rnn_cell_feed_dict=dict()):
         '''Creates a FixedPointFinder object.
 
-        Optimization terminates once every initialization satifies one or both of the following criteria:
+        Optimization terminates once every initialization satisfies one or both of the following criteria:
             1. q < tol_q
             2. dq < tol_dq * learning_rate
 
@@ -121,6 +121,9 @@ class FixedPointFinder(object):
             corresponding numpy data type is used for numpy objects and
             operations.
 
+            rng: A numpy random number generator.
+            Default: np.random.RandomState(0).
+
             verbose (optional): A bool indicating whether to print high-level
             status updates. Default: True.
 
@@ -154,6 +157,11 @@ class FixedPointFinder(object):
         self.tf_dtype = tf_dtype
         self.np_dtype = tf_dtype.as_numpy_dtype
 
+        # Make random sequences reproducible
+        if rng is None:
+            rng = np.random.RandomState(0)
+        self.rng = rng
+
         self.is_lstm = isinstance(
             rnn_cell.state_size, tf.nn.rnn_cell.LSTMStateTuple)
 
@@ -185,7 +193,7 @@ class FixedPointFinder(object):
     # *************************************************************************
 
     def sample_inputs_and_states(self, inputs, state_traj, n_inits,
-        noise_scale=0.0, rng=npr.RandomState(0)):
+        noise_scale=0.0):
         '''Draws random paired samples from the RNN's inputs and hidden-state
         trajectories. Sampled states (but not inputs) can optionally be
         corrupted by independent and identically distributed (IID) Gaussian
@@ -227,14 +235,14 @@ class FixedPointFinder(object):
         input_samples = np.zeros([n_inits, n_inputs])
         state_samples = np.zeros([n_inits, n_states])
         for init_idx in range(n_inits):
-            trial_idx = rng.randint(n_batch)
-            time_idx = rng.randint(n_time)
+            trial_idx = self.rng.randint(n_batch)
+            time_idx = self.rng.randint(n_time)
             input_samples[init_idx,:] = inputs[trial_idx,time_idx,:]
             state_samples[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
 
         # Add IID Gaussian noise to the sampled states
         state_samples = self._add_gaussian_noise(
-            state_samples, noise_scale, rng)
+            state_samples, noise_scale)
 
         if self.is_lstm:
             return input_samples, tf_utils.convert_to_LSTMStateTuple(states)
@@ -242,7 +250,7 @@ class FixedPointFinder(object):
             return input_samples, state_samples
 
     def sample_states(self, state_traj, n_inits,
-                      noise_scale=0.0, rng=npr.RandomState(0)):
+                      noise_scale=0.0):
         '''Draws random samples from trajectories of the RNN state. Samples
         can optionally be corrupted by independent and identically distributed
         (IID) Gaussian noise. These samples are intended to be used as initial
@@ -282,12 +290,12 @@ class FixedPointFinder(object):
         # Draw random samples from state trajectories
         states = np.zeros([n_inits, n_states])
         for init_idx in range(n_inits):
-            trial_idx = rng.randint(n_batch)
-            time_idx = rng.randint(n_time)
+            trial_idx = self.rng.randint(n_batch)
+            time_idx = self.rng.randint(n_time)
             states[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
 
         # Add IID Gaussian noise to the sampled states
-        states = self._add_gaussian_noise(states, noise_scale, rng)
+        states = self._add_gaussian_noise(states, noise_scale)
 
         if self.is_lstm:
             return tf_utils.convert_to_LSTMStateTuple(states)
@@ -313,9 +321,9 @@ class FixedPointFinder(object):
         Returns:
             unique_fps: A FixedPoints object containing the set of unique
             fixed points after optimizing from all initial_states. Two fixed
-            points are considered unique if all absolute elementwise
+            points are considered unique if all absolute element-wise
             differences are less than tol_unique AND the corresponding inputs
-            are unqiue following the same criteria. See FixedPoints.py for
+            are unique following the same criteria. See FixedPoints.py for
             additional detail.
 
             all_fps: A FixedPoints object containing the likely redundant set
@@ -371,7 +379,7 @@ class FixedPointFinder(object):
         if unique_fps.n > self.max_n_unique:
             self._print_if_verbose('\tRandomly selecting %d unique '
             'fixed points to keep.' % self.max_n_unique)
-            idx_keep = np.random.choice(
+            idx_keep = self.rng.choice(
                 unique_fps.n, self.max_n_unique, replace=False)
             unique_fps = unique_fps[idx_keep]
 
@@ -433,8 +441,7 @@ class FixedPointFinder(object):
         else:
             return self.rnn_cell.state_size
 
-    @staticmethod
-    def _add_gaussian_noise(data, noise_scale=0.0, rng=npr.RandomState(0)):
+    def _add_gaussian_noise(self, data, noise_scale=0.0):
         '''
         Args:
             data: Numpy array.
@@ -442,8 +449,6 @@ class FixedPointFinder(object):
             noise_scale: (Optional) non-negative scalar indicating the
             standard deviation of the Gaussian noise samples to be generated.
             Default: 0.0.
-
-            rng:
 
         Returns:
             Numpy array with shape matching that of data.
@@ -456,7 +461,7 @@ class FixedPointFinder(object):
         if noise_scale == 0.0:
             return data # no noise to add
         if noise_scale > 0.0:
-            return data + noise_scale * rng.randn(*data.shape)
+            return data + noise_scale * self.rng.randn(*data.shape)
         elif noise_scale < 0.0:
             raise ValueError('noise_scale must be non-negative,'
                              ' but was %f' % noise_scale)
