@@ -407,9 +407,10 @@ class FixedPointFinder(object):
         # computational savings when not all are needed.)
         if unique_fps.n > self.max_n_unique:
             self._print_if_verbose('\tRandomly selecting %d unique '
-            'fixed points to keep.' % self.max_n_unique)
+                'fixed points to keep.' % self.max_n_unique)
+            max_n_unique = int(self.max_n_unique)
             idx_keep = self.rng.choice(
-                unique_fps.n, self.max_n_unique, replace=False)
+                unique_fps.n, max_n_unique, replace=False)
             unique_fps = unique_fps[idx_keep]
 
         if self.do_compute_jacobians:
