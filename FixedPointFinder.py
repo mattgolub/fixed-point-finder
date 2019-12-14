@@ -24,28 +24,56 @@ import tf_utils
 
 class FixedPointFinder(object):
 
+    default_hps = {
+        'tol_q': 1e-12,
+        'tol_dq': 1e-20,
+        'max_iters': 5000,
+        'method': 'joint',
+        'do_rerun_q_outliers': False,
+        'outlier_q_scale': 10.0,
+        'do_exclude_distance_outliers': True,
+        'outlier_distance_scale': 10.0,
+        'tol_unique': 1e-3,
+        'max_n_unique': np.inf,
+        'do_compute_jacobians': True,
+        'do_decompose_jacobians': True,
+
+        # keep as string (rather than tf.float32)
+        # for better argparse handling, yaml writing
+        'tf_dtype': 'float32',
+        'random_seed': 0,
+        'verbose': True,
+        'super_verbose': False,
+        'n_iters_per_print_update': 100,
+        'alr_hps': {},
+        'agnc_hps': {},
+        'adam_hps': {'epsilon': 0.01},
+        'rnn_cell_feed_dict': {},
+        }
+
     def __init__(self, rnn_cell, sess,
-        tol_q=1e-12,
-        tol_dq=1e-20,
-        max_iters=5000,
-        method='joint',
-        do_rerun_q_outliers=False,
-        outlier_q_scale=10.0,
-        do_exclude_distance_outliers=True,
-        outlier_distance_scale=10.0,
-        tol_unique=1e-3,
-        max_n_unique=np.inf,
-        do_compute_jacobians=True,
-        do_decompose_jacobians=True,
-        tf_dtype=tf.float32,
-        rng=None,
-        verbose=True,
-        super_verbose=False,
-        n_iters_per_print_update=100,
-        alr_hps=dict(),
-        agnc_hps=dict(),
-        adam_hps={'epsilon': 0.01},
-        rnn_cell_feed_dict=dict()):
+        tol_q=default_hps['tol_q'],
+        tol_dq=default_hps['tol_dq'],
+        max_iters=default_hps['max_iters'],
+        method=default_hps['method'],
+        do_rerun_q_outliers=default_hps['do_rerun_q_outliers'],
+        outlier_q_scale=default_hps['outlier_q_scale'],
+        do_exclude_distance_outliers=\
+            default_hps['do_exclude_distance_outliers'],
+        outlier_distance_scale=default_hps['outlier_distance_scale'],
+        tol_unique=default_hps['tol_unique'],
+        max_n_unique=default_hps['max_n_unique'],
+        do_compute_jacobians=default_hps['do_compute_jacobians'],
+        do_decompose_jacobians=default_hps['do_decompose_jacobians'],
+        tf_dtype=default_hps['tf_dtype'],
+        random_seed=default_hps['random_seed'],
+        verbose=default_hps['verbose'],
+        super_verbose=default_hps['super_verbose'],
+        n_iters_per_print_update=default_hps['n_iters_per_print_update'],
+        alr_hps=default_hps['alr_hps'],
+        agnc_hps=default_hps['agnc_hps'],
+        adam_hps=default_hps['adam_hps'],
+        rnn_cell_feed_dict=default_hps['rnn_cell_feed_dict']):
         '''Creates a FixedPointFinder object.
 
         Optimization terminates once every initialization satisfies one or both of the following criteria:
@@ -109,7 +137,8 @@ class FixedPointFinder(object):
 
             max_n_unique (optional): A positive integer indicating the max
             number of unique fixed points to keep. If the number of unique
-            fixed points identified exceeds this value, points are randomly dropped. Default: np.inf.
+            fixed points identified exceeds this value, points are randomly
+            dropped. Default: np.inf.
 
             do_compute_jacobians (optional): A bool specifying whether or not
             to compute the Jacobian at each fixed point. Default: True.
@@ -117,12 +146,12 @@ class FixedPointFinder(object):
             do_decompose_jacobians (optional): A bool specifying whether or not
             to eigen-decompose each fixed point's Jacobian. Default: True.
 
-            tf_dtype: Data type to use for all TensorFlow ops. The
-            corresponding numpy data type is used for numpy objects and
-            operations.
+            tf_dtype: string indicating the Tensorflow data type to use for
+            all Tensorflow ops and objects. The corresponding numpy data type
+            is used for numpy objects and operations. Default: 'float32' -->
+            tf.float32.
 
-            rng: A numpy random number generator.
-            Default: np.random.RandomState(0).
+            random_seed: Seed for numpy random number generator. Default: 0.
 
             verbose (optional): A bool indicating whether to print high-level
             status updates. Default: True.
@@ -154,13 +183,12 @@ class FixedPointFinder(object):
         self.rnn_cell = rnn_cell
         self.rnn_cell_feed_dict = rnn_cell_feed_dict
         self.session = sess
-        self.tf_dtype = tf_dtype
-        self.np_dtype = tf_dtype.as_numpy_dtype
+        self.tf_dtype = getattr(tf, tf_dtype)
+        self.np_dtype = self.tf_dtype.as_numpy_dtype
 
         # Make random sequences reproducible
-        if rng is None:
-            rng = np.random.RandomState(0)
-        self.rng = rng
+        self.random_seed = random_seed
+        self.rng = np.random.RandomState(random_seed)
 
         self.is_lstm = isinstance(
             rnn_cell.state_size, tf.nn.rnn_cell.LSTMStateTuple)
@@ -211,13 +239,14 @@ class FixedPointFinder(object):
             n_inits: int specifying the number of sampled states to return.
 
             noise_scale (optional): non-negative float specifying the standard
-            deviation of IID Gaussian noise samples added to the sampled states.
-            Default: 0.0.
+            deviation of IID Gaussian noise samples added to the sampled
+            states. Default: 0.0.
 
         Returns:
             initial_states: Sampled RNN states as a [n_inits x n_states] numpy
-            array or as an LSTMStateTuple with .c and .h as [n_inits x n_states]
-            numpy arrays (type matches than of state_traj).
+            array or as an LSTMStateTuple with .c and .h as
+            [n_inits x n_states] numpy arrays (type matches than of
+            state_traj).
 
         Raises:
             ValueError if noise_scale is negative.
