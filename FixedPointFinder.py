@@ -413,7 +413,7 @@ class FixedPointFinder(object):
                 unique_fps.n, max_n_unique, replace=False)
             unique_fps = unique_fps[idx_keep]
 
-        if self.do_compute_jacobians:
+        if self.do_compute_jacobians and unique_fps.n > 0:
             self._print_if_verbose('\tComputing Jacobian at %d '
                                    'unique fixed points.' % unique_fps.n)
             J_np, J_tf = self._compute_multiple_jacobians_np(unique_fps)
