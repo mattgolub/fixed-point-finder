@@ -472,7 +472,8 @@ class FixedPointFinder(object):
             return self.rnn_cell.state_size
 
     def _add_gaussian_noise(self, data, noise_scale=0.0):
-        '''
+        ''' Adds IID Gaussian noise to Numpy data.
+
         Args:
             data: Numpy array.
 
@@ -542,6 +543,33 @@ class FixedPointFinder(object):
 
     @staticmethod
     def identify_distance_non_outliers(fps, initial_states, dist_thresh):
+        ''' Identify fixed points that are "far" from the initial states used
+        to seed the fixed point optimization. Here, "far" means a normalized
+        Euclidean distance from the centroid of the initial states that
+        exceeds a specified threshold. Distances are normalized by the average
+        distances between the initial states and their centroid.
+
+        Args:
+            fps: A FixedPoints object containing optimized fixed points and
+            associated metadata.
+
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            dist_thresh: A scalar float indicating the threshold of fixed
+            points' normalized distance from the centroid of the
+            initial_states. Fixed points with normalized distances greater
+            than this value are deemed putative outliers.
+
+        Returns:
+            A numpy array containing the indices into fps corresponding to the
+            non-outlier fixed points.
+        '''
+
         if tf_utils.is_lstm(initial_states):
             initial_states = \
                 tf_utils.convert_from_LSTMStateTuple(initial_states)
@@ -549,14 +577,20 @@ class FixedPointFinder(object):
         n_inits = initial_states.shape[0]
         n_fps = fps.n
 
-        centroid = np.mean(initial_states, axis=0) # shape (n_states,)
-        init_dists = \
-            np.linalg.norm(initial_states - centroid, axis=1) # shape: (n,)
-        avg_init_dist = np.mean(init_dists)
-        scaled_init_dists = \
-            np.true_divide(init_dists, avg_init_dist)# shape: (n,)
+        # Centroid of initial_states, shape (n_states,)
+        centroid = np.mean(initial_states, axis=0)
 
+        # Distance of each initial state from the centroid, shape (n,)
+        init_dists = np.linalg.norm(initial_states - centroid, axis=1)
+        avg_init_dist = np.mean(init_dists)
+
+        # Normalized distances of initial states to the centroid, shape: (n,)
+        scaled_init_dists = np.true_divide(init_dists, avg_init_dist)
+
+        # Distance of each FP from the initial_states centroid
         fps_dists = np.linalg.norm(fps.xstar - centroid, axis=1)
+
+        # Normalized
         scaled_fps_dists = np.true_divide(fps_dists, avg_init_dist)
 
         init_non_outlier_idx = np.where(scaled_init_dists < dist_thresh)[0]
@@ -572,6 +606,10 @@ class FixedPointFinder(object):
         return fps_non_outlier_idx
 
     def _exclude_distance_outliers(self, fps, initial_states):
+        ''' Removes putative distance outliers from a set of fixed points.
+        See docstring for identify_distance_non_outliers(...).
+        '''
+
         idx_keep = self.identify_distance_non_outliers(
             fps,
             initial_states,
