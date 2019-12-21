@@ -414,7 +414,7 @@ class FlipFlop(RecurrentWhisperer):
 
         return {'inputs': inputs, 'output': output}
 
-    def _update_visualizations(self,
+    def update_visualizations(self,
         train_data=None,
         valid_data=None,
         is_final=False):
