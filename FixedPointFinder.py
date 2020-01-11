@@ -847,6 +847,41 @@ class FixedPointFinder(object):
 
         return fps
 
+    def _build_state_vars(self, initial_states):
+        ''' Creates state variables over which to optimize during fixed point
+        finding. State variables are setup to be initialized to the
+        user-specified initial_states (although formal TF initialization is
+        not done here).
+
+        Args:
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n x n_states/2] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+        Returns:
+            x: An [n x n_states] tf.Variable (the optimization variable)
+            representing RNN states, initialized to the values in
+            initial_states. If the RNN is an LSTM, n_states represents the
+            concatenated hidden and cell states.
+
+            x_rnncell: A potentially reformatted variant of x that serves as
+            the second argument to self.rnn_cell. If rnn_cell is an LSTM,
+            x_rnncell is formatted as an LSTMStateTuple. Otherwise, it's just a reference to x.
+        '''
+
+        if self.is_lstm:
+            c_h_init = tf_utils.convert_from_LSTMStateTuple(initial_states)
+            x = tf.Variable(c_h_init, dtype=self.tf_dtype)
+            x_rnncell = tf_utils.convert_to_LSTMStateTuple(x)
+        else:
+            x = tf.Variable(initial_states, dtype=self.tf_dtype)
+            x_rnncell = x
+
+        return x, x_rnncell
+
     def _grab_RNN(self, initial_states, inputs):
         '''Creates objects for interfacing with the RNN.
 
@@ -876,15 +911,8 @@ class FixedPointFinder(object):
             function of the RNN applied to x.
         '''
 
-        if self.is_lstm:
-            c_h_init = tf_utils.convert_from_LSTMStateTuple(initial_states)
-            x = tf.Variable(c_h_init, dtype=self.tf_dtype)
-            x_rnncell = tf_utils.convert_to_LSTMStateTuple(x)
-        else:
-            x = tf.Variable(initial_states, dtype=self.tf_dtype)
-            x_rnncell = x
+        x, x_rnncell = self._build_state_vars(initial_states)
 
-        n = x.shape[0]
         inputs_tf = tf.constant(inputs, dtype=self.tf_dtype)
 
         output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
@@ -1122,7 +1150,9 @@ class FixedPointFinder(object):
         return ev_x, ev_F, ev_q, ev_dq, iter_count
 
     def _compute_multiple_jacobians_np(self, fps):
-        '''Computes the Jacobian of the RNN state transition function.
+        '''Computes the Jacobian of the RNN state transition function at the
+        specified fixed points (i.e., partial derivatives with respect to the
+        hidden states).
 
         Args:
             fps: A FixedPoints object containing the RNN states (fps.xstar)
@@ -1133,6 +1163,8 @@ class FixedPointFinder(object):
             Jacobian of the RNN state transition function at the states
             specified in fps, given the inputs in fps.
 
+            J_tf: The TF op representing the Jacobians.
+
         '''
         inputs_np = fps.inputs
 
@@ -1142,6 +1174,7 @@ class FixedPointFinder(object):
             states_np = fps.xstar
 
         x_tf, F_tf = self._grab_RNN(states_np, inputs_np)
+
         try:
            J_tf = pfor.batch_jacobian(F_tf, x_tf)
         except absl.flags._exceptions.UnparsedFlagAccessError:
@@ -1154,6 +1187,61 @@ class FixedPointFinder(object):
     # *************************************************************************
     # In development: *********************************************************
     # *************************************************************************
+
+    def _compute_dFdu(self, fps):
+        ''' Computes the partial derivatives of the RNN state transition
+        function with respect to the RNN's inputs.
+
+        Args:
+            fps: A FixedPoints object containing the RNN states (fps.xstar)
+            and inputs (fps.inputs) at which to compute the Jacobians.
+
+        Returns:
+            J_np: An [n x n_states x n_inputs] numpy array containing the
+            partial derivatives of the RNN state transition function at the
+            inputs specified in fps, given the states in fps.
+
+            J_tf: The TF op representing the partial derivatives.
+        '''
+
+        def grab_RNN_for_dFdu(initial_states, inputs):
+            # Modified variant of _grab_RNN(), repurposed for dFdu
+
+            # Same as in _grab_RNN()
+            x, x_rnncell = self._build_state_vars(initial_states)
+
+            # Different from _grab_RNN(), which builds inputs as tf.constant
+            inputs_tf = tf.Variable(inputs, dtype=self.tf_dtype)
+
+            output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
+
+            if self.is_lstm:
+                F = tf_utils.convert_from_LSTMStateTuple(F_rnncell)
+            else:
+                F = F_rnncell
+
+            init = tf.variables_initializer(var_list=[x, inputs_tf])
+            self.session.run(init)
+
+            return inputs_tf, F
+
+        inputs_np = fps.inputs
+
+        if self.is_lstm:
+            states_np = tf_utils.convert_to_LSTMStateTuple(fps.xstar)
+        else:
+            states_np = fps.xstar
+
+        inputs_tf, F_tf = grab_RNN_for_dFdu(states_np, inputs_np)
+
+        try:
+           J_tf = pfor.batch_jacobian(F_tf, inputs_tf)
+        except absl.flags._exceptions.UnparsedFlagAccessError:
+           J_tf = pfor.batch_jacobian(F_tf, inputs_tf, use_pfor=False)
+
+        J_np = self.session.run(J_tf)
+
+        return J_np, J_tf
 
     '''Playing around to see if Jacobian decomposition can be done faster if
     done in Tensorflow (currently it is done in numpy--see FixedPoints.py).
