@@ -384,7 +384,7 @@ class FixedPoints(object):
         sort_idx = np.argsort(np.abs(e_vals_unsrt))[:,::-1]
 
         # Apply the sort
-        # There must be a faster way, but I'm lazy to find it at the moment
+        # There must be a faster way, but I'm too lazy to find it at the moment
         self.eigval_J_xstar = \
             self._alloc_nan((n, n_states), dtype=np.complex64)
         self.eigvec_J_xstar = \
