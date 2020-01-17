@@ -76,7 +76,8 @@ class FixedPointFinder(object):
         rnn_cell_feed_dict=default_hps['rnn_cell_feed_dict']):
         '''Creates a FixedPointFinder object.
 
-        Optimization terminates once every initialization satisfies one or both of the following criteria:
+        Optimization terminates once every initialization satisfies one or
+        both of the following criteria:
             1. q < tol_q
             2. dq < tol_dq * learning_rate
 
@@ -428,316 +429,89 @@ class FixedPointFinder(object):
         return unique_fps, all_fps
 
     # *************************************************************************
-    # Helper functions, no interaction with Tensorflow graph ******************
+    # Tensorflow Core (these functions will be updated in next major revision)
     # *************************************************************************
 
-    @property
-    def _input_size(self):
-        ''' Gets the input size of the RNN. This is a bit of a hack to get
-        around the fact that rnn_cell.input_size is often undefined, even after
-        training and predicting from the model. A fine quirk of Tensorflow. Perhaps this is fixed in more recent versions of Tensorflow.
+    def _build_state_vars(self, initial_states):
+        ''' Creates state variables over which to optimize during fixed point
+        finding. State variables are setup to be initialized to the
+        user-specified initial_states (although formal TF initialization is
+        not done here).
 
         Args:
-            None.
-
-        Returns:
-            An int specifying the size of the RNN's inputs.
-        '''
-        if self.is_lstm:
-            input_size = \
-                self.rnn_cell.variables[0].shape[0].value - \
-                self.rnn_cell.state_size[0]
-        else:
-            input_size = \
-                self.rnn_cell.variables[0].shape[0].value - \
-                self.rnn_cell.state_size
-
-        return input_size
-
-    @property
-    def _state_size(self):
-        ''' Gets the state size of the RNN. For an LSTM, here state size is
-        defined by the concatenated (hidden, cell) size.
-
-        Args:
-            None
-
-        Returns:
-            An int specifying the size of the RNN's state.
-        '''
-
-        if self.is_lstm:
-            return self.rnn_cell.state_size[0] + self.rnn_cell.state_size[1]
-        else:
-            return self.rnn_cell.state_size
-
-    def _add_gaussian_noise(self, data, noise_scale=0.0):
-        ''' Adds IID Gaussian noise to Numpy data.
-
-        Args:
-            data: Numpy array.
-
-            noise_scale: (Optional) non-negative scalar indicating the
-            standard deviation of the Gaussian noise samples to be generated.
-            Default: 0.0.
-
-        Returns:
-            Numpy array with shape matching that of data.
-
-        Raises:
-            ValueError if noise_scale is negative.
-        '''
-
-        # Add IID Gaussian noise
-        if noise_scale == 0.0:
-            return data # no noise to add
-        if noise_scale > 0.0:
-            return data + noise_scale * self.rng.randn(*data.shape)
-        elif noise_scale < 0.0:
-            raise ValueError('noise_scale must be non-negative,'
-                             ' but was %f' % noise_scale)
-
-    @staticmethod
-    def identify_q_outliers(fps, q_thresh):
-        '''Identify fixed points with optimized q values that exceed a
-        specified threshold.
-
-        Args:
-            fps: A FixedPoints object containing optimized fixed points and
-            associated metadata.
-
-            q_thresh: A scalar float indicating the threshold on fixed
-            points' q values.
-
-        Returns:
-            A numpy array containing the indices into fps corresponding to
-            the fixed points with q values exceeding the threshold.
-
-        Usage:
-            idx = identify_q_outliers(fps, q_thresh)
-            outlier_fps = fps[idx]
-        '''
-        return np.where(fps.qstar > q_thresh)[0]
-
-    @staticmethod
-    def identify_q_non_outliers(fps, q_thresh):
-        '''Identify fixed points with optimized q values that do not exceed a
-        specified threshold.
-
-        Args:
-            fps: A FixedPoints object containing optimized fixed points and
-            associated metadata.
-
-            q_thresh: A scalar float indicating the threshold on fixed points'
-            q values.
-
-        Returns:
-            A numpy array containing the indices into fps corresponding to the
-            fixed points with q values that do not exceed the threshold.
-
-        Usage:
-            idx = identify_q_non_outliers(fps, q_thresh)
-            non_outlier_fps = fps[idx]
-        '''
-        return np.where(fps.qstar <= q_thresh)[0]
-
-    @staticmethod
-    def identify_distance_non_outliers(fps, initial_states, dist_thresh):
-        ''' Identify fixed points that are "far" from the initial states used
-        to seed the fixed point optimization. Here, "far" means a normalized
-        Euclidean distance from the centroid of the initial states that
-        exceeds a specified threshold. Distances are normalized by the average
-        distances between the initial states and their centroid.
-
-        Args:
-            fps: A FixedPoints object containing optimized fixed points and
-            associated metadata.
-
             initial_states: Either an [n x n_states] numpy array or an
             LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_states] numpy arrays. These data specify the initial
+            [n x n_states/2] numpy arrays. These data specify the initial
             states of the RNN, from which the optimization will search for
             fixed points. The choice of type must be consistent with state
             type of rnn_cell.
 
-            dist_thresh: A scalar float indicating the threshold of fixed
-            points' normalized distance from the centroid of the
-            initial_states. Fixed points with normalized distances greater
-            than this value are deemed putative outliers.
-
         Returns:
-            A numpy array containing the indices into fps corresponding to the
-            non-outlier fixed points.
+            x: An [n x n_states] tf.Variable (the optimization variable)
+            representing RNN states, initialized to the values in
+            initial_states. If the RNN is an LSTM, n_states represents the
+            concatenated hidden and cell states.
+
+            x_rnncell: A potentially reformatted variant of x that serves as
+            the second argument to self.rnn_cell. If rnn_cell is an LSTM,
+            x_rnncell is formatted as an LSTMStateTuple. Otherwise, it's just
+            a reference to x.
         '''
 
-        if tf_utils.is_lstm(initial_states):
-            initial_states = \
-                tf_utils.convert_from_LSTMStateTuple(initial_states)
-
-        n_inits = initial_states.shape[0]
-        n_fps = fps.n
-
-        # Centroid of initial_states, shape (n_states,)
-        centroid = np.mean(initial_states, axis=0)
-
-        # Distance of each initial state from the centroid, shape (n,)
-        init_dists = np.linalg.norm(initial_states - centroid, axis=1)
-        avg_init_dist = np.mean(init_dists)
-
-        # Normalized distances of initial states to the centroid, shape: (n,)
-        scaled_init_dists = np.true_divide(init_dists, avg_init_dist)
-
-        # Distance of each FP from the initial_states centroid
-        fps_dists = np.linalg.norm(fps.xstar - centroid, axis=1)
-
-        # Normalized
-        scaled_fps_dists = np.true_divide(fps_dists, avg_init_dist)
-
-        init_non_outlier_idx = np.where(scaled_init_dists < dist_thresh)[0]
-        n_init_non_outliers = init_non_outlier_idx.size
-        print('\t\tinitial_states: %d outliers detected (of %d).'
-            % (n_inits - n_init_non_outliers, n_inits))
-
-        fps_non_outlier_idx = np.where(scaled_fps_dists < dist_thresh)[0]
-        n_fps_non_outliers = fps_non_outlier_idx.size
-        print('\t\tfixed points: %d outliers detected (of %d).'
-            % (n_fps - n_fps_non_outliers, n_fps))
-
-        return fps_non_outlier_idx
-
-    def _exclude_distance_outliers(self, fps, initial_states):
-        ''' Removes putative distance outliers from a set of fixed points.
-        See docstring for identify_distance_non_outliers(...).
-        '''
-
-        idx_keep = self.identify_distance_non_outliers(
-            fps,
-            initial_states,
-            self.outlier_distance_scale)
-        return fps[idx_keep]
-
-    def _run_additional_iterations_on_outliers(self, fps):
-        '''Detects outlier states with respect to the q function and runs
-        additional optimization iterations on those states This should only be
-        used after calling either _run_joint_optimization or
-        _run_sequential_optimizations.
-
-        Args:
-            A FixedPoints object containing (partially) optimized fixed points
-            and associated metadata.
-
-        Returns:
-            A FixedPoints object containing the further-optimized fixed points
-            and associated metadata.
-        '''
-
-        '''
-        Known issue:
-            Additional iterations do not always reduce q! This may have to do
-            with learning rate schedules restarting from values that are too
-            large.
-        '''
-
-        def perform_outlier_optimization(fps, method):
-
-            idx_outliers = self.identify_q_outliers(fps, outlier_min_q)
-            n_outliers = len(idx_outliers)
-
-            outlier_fps = fps[idx_outliers]
-            n_prev_iters = outlier_fps.n_iters
-            inputs = outlier_fps.inputs
-            initial_states = self._get_rnncell_compatible_states(
-                outlier_fps.xstar)
-
-            if method == 'joint':
-
-                self._print_if_verbose('\tPerforming another round of '
-                                       'joint optimization, '
-                                       'over outlier states only.')
-
-                updated_outlier_fps = self._run_joint_optimization(
-                    initial_states, inputs)
-
-            elif method == 'sequential':
-
-                self._print_if_verbose('\tPerforming a round of sequential '
-                                       'optimizations, over outlier '
-                                       'states only.')
-
-                updated_outlier_fps = self._run_sequential_optimizations(
-                    initial_states, inputs, q_prior=outlier_fps.qstar)
-
-            else:
-                raise ValueError('Unsupported method: %s.' % method)
-
-            updated_outlier_fps.n_iters += n_prev_iters
-            fps[idx_outliers] = updated_outlier_fps
-
-            return fps
-
-        def outlier_update(fps):
-
-            idx_outliers = self.identify_q_outliers(fps, outlier_min_q)
-            n_outliers = len(idx_outliers)
-
-            self._print_if_verbose('\n\tDetected %d putative outliers '
-                                   '(q>%.2e).' % (n_outliers, outlier_min_q))
-
-            return idx_outliers
-
-        outlier_min_q = np.median(fps.qstar)*self.outlier_q_scale
-        idx_outliers = outlier_update(fps)
-
-        if len(idx_outliers) == 0:
-            return fps
-
-        '''
-        Experimental: Additional rounds of joint optimization. This code
-        currently runs, but does not appear to be very helpful in eliminating
-        outliers.
-        '''
-        if self.method == 'joint':
-            N_ROUNDS = 0 # consider making this a hyperparameter
-            for round in range(N_ROUNDS):
-
-                fps = perform_outlier_optimization(fps, 'joint')
-
-                idx_outliers = outlier_update(fps)
-                if len(idx_outliers) == 0:
-                    return fps
-
-        # Always perform a round of sequential optimizations on any (remaining)
-        # "outliers".
-        fps = perform_outlier_optimization(fps, 'sequential')
-        outlier_update(fps) # For print output only
-
-        return fps
-
-    def _get_rnncell_compatible_states(self, states):
-        '''Converts RNN states if necessary to be compatible with
-        self.rnn_cell.
-
-        Args:
-            states:
-                Either a numpy array or LSTMStateTuple.
-
-        Returns:
-            A representation of states that is compatible with self.rnn_cell.
-            If self.rnn_cell is an LSTMCell, the representation is as an
-            LSTMStateTuple. Otherwise, the representation is a numpy array.
-        '''
         if self.is_lstm:
-            return tf_utils.convert_to_LSTMStateTuple(states)
+            c_h_init = tf_utils.convert_from_LSTMStateTuple(initial_states)
+            x = tf.Variable(c_h_init, dtype=self.tf_dtype)
+            x_rnncell = tf_utils.convert_to_LSTMStateTuple(x)
         else:
-            return states
+            x = tf.Variable(initial_states, dtype=self.tf_dtype)
+            x_rnncell = x
 
-    def _print_if_verbose(self, *args, **kwargs):
-        if self.verbose:
-            print(*args, **kwargs)
+        return x, x_rnncell
 
-    # *************************************************************************
-    # Tensorflow Core (these functions will be updated in the revision) *******
-    # *************************************************************************
+    def _grab_RNN(self, initial_states, inputs):
+        '''Creates objects for interfacing with the RNN.
+
+        These objects include 1) the optimization variables (initialized to
+        the user-specified initial_states) which will, after optimization,
+        contain fixed points of the RNN, and 2) hooks into those optimization
+        variables that are required for building the TF graph.
+
+        Args:
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n x n_states/2] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: A [n x n_inputs] numpy array specifying the inputs to the
+            RNN for this fixed point optimization.
+
+        Returns:
+            x: An [n x n_states] tf.Variable (the optimization variable)
+            representing RNN states, initialized to the values in
+            initial_states. If the RNN is an LSTM, n_states represents the
+            concatenated hidden and cell states.
+
+            F: An [n x n_states] tf op representing the state transition
+            function of the RNN applied to x.
+        '''
+
+        x, x_rnncell = self._build_state_vars(initial_states)
+
+        inputs_tf = tf.constant(inputs, dtype=self.tf_dtype)
+
+        output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
+
+        if self.is_lstm:
+            F = tf_utils.convert_from_LSTMStateTuple(F_rnncell)
+        else:
+            F = F_rnncell
+
+        init = tf.variables_initializer(var_list=[x])
+        self.session.run(init)
+
+        return x, F
 
     def _run_joint_optimization(self, initial_states, inputs):
         '''Finds multiple fixed points via a joint optimization over multiple
@@ -846,86 +620,6 @@ class FixedPointFinder(object):
                 initial_states_i, inputs_i)
 
         return fps
-
-    def _build_state_vars(self, initial_states):
-        ''' Creates state variables over which to optimize during fixed point
-        finding. State variables are setup to be initialized to the
-        user-specified initial_states (although formal TF initialization is
-        not done here).
-
-        Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n x n_states/2] numpy arrays. These data specify the initial
-            states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
-
-        Returns:
-            x: An [n x n_states] tf.Variable (the optimization variable)
-            representing RNN states, initialized to the values in
-            initial_states. If the RNN is an LSTM, n_states represents the
-            concatenated hidden and cell states.
-
-            x_rnncell: A potentially reformatted variant of x that serves as
-            the second argument to self.rnn_cell. If rnn_cell is an LSTM,
-            x_rnncell is formatted as an LSTMStateTuple. Otherwise, it's just a reference to x.
-        '''
-
-        if self.is_lstm:
-            c_h_init = tf_utils.convert_from_LSTMStateTuple(initial_states)
-            x = tf.Variable(c_h_init, dtype=self.tf_dtype)
-            x_rnncell = tf_utils.convert_to_LSTMStateTuple(x)
-        else:
-            x = tf.Variable(initial_states, dtype=self.tf_dtype)
-            x_rnncell = x
-
-        return x, x_rnncell
-
-    def _grab_RNN(self, initial_states, inputs):
-        '''Creates objects for interfacing with the RNN.
-
-        These objects include 1) the optimization variables (initialized to
-        the user-specified initial_states) which will, after optimization,
-        contain fixed points of the RNN, and 2) hooks into those optimization
-        variables that are required for building the TF graph.
-
-        Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n x n_states/2] numpy arrays. These data specify the initial
-            states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
-
-            inputs: A [n x n_inputs] numpy array specifying the inputs to the
-            RNN for this fixed point optimization.
-
-        Returns:
-            x: An [n x n_states] tf.Variable (the optimization variable)
-            representing RNN states, initialized to the values in
-            initial_states. If the RNN is an LSTM, n_states represents the
-            concatenated hidden and cell states.
-
-            F: An [n x n_states] tf op representing the state transition
-            function of the RNN applied to x.
-        '''
-
-        x, x_rnncell = self._build_state_vars(initial_states)
-
-        inputs_tf = tf.constant(inputs, dtype=self.tf_dtype)
-
-        output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
-
-        if self.is_lstm:
-            F = tf_utils.convert_from_LSTMStateTuple(F_rnncell)
-        else:
-            F = F_rnncell
-
-        init = tf.variables_initializer(var_list=[x])
-        self.session.run(init)
-
-        return x, F
 
     def _run_single_optimization(self, initial_state, inputs):
         '''Finds a single fixed point from a single initial state.
@@ -1185,6 +879,318 @@ class FixedPointFinder(object):
         return J_np, J_tf
 
     # *************************************************************************
+    # Helper functions, no interaction with Tensorflow graph ******************
+    # *************************************************************************
+
+    @property
+    def _input_size(self):
+        ''' Gets the input size of the RNN. This is a bit of a hack to get
+        around the fact that rnn_cell.input_size is often undefined, even after
+        training and predicting from the model. A fine quirk of Tensorflow. Perhaps this is fixed in more recent versions of Tensorflow.
+
+        Args:
+            None.
+
+        Returns:
+            An int specifying the size of the RNN's inputs.
+        '''
+        if self.is_lstm:
+            input_size = \
+                self.rnn_cell.variables[0].shape[0].value - \
+                self.rnn_cell.state_size[0]
+        else:
+            input_size = \
+                self.rnn_cell.variables[0].shape[0].value - \
+                self.rnn_cell.state_size
+
+        return input_size
+
+    @property
+    def _state_size(self):
+        ''' Gets the state size of the RNN. For an LSTM, here state size is
+        defined by the concatenated (hidden, cell) size.
+
+        Args:
+            None
+
+        Returns:
+            An int specifying the size of the RNN's state.
+        '''
+
+        if self.is_lstm:
+            return self.rnn_cell.state_size[0] + self.rnn_cell.state_size[1]
+        else:
+            return self.rnn_cell.state_size
+
+    def _add_gaussian_noise(self, data, noise_scale=0.0):
+        ''' Adds IID Gaussian noise to Numpy data.
+
+        Args:
+            data: Numpy array.
+
+            noise_scale: (Optional) non-negative scalar indicating the
+            standard deviation of the Gaussian noise samples to be generated.
+            Default: 0.0.
+
+        Returns:
+            Numpy array with shape matching that of data.
+
+        Raises:
+            ValueError if noise_scale is negative.
+        '''
+
+        # Add IID Gaussian noise
+        if noise_scale == 0.0:
+            return data # no noise to add
+        if noise_scale > 0.0:
+            return data + noise_scale * self.rng.randn(*data.shape)
+        elif noise_scale < 0.0:
+            raise ValueError('noise_scale must be non-negative,'
+                             ' but was %f' % noise_scale)
+
+    @staticmethod
+    def identify_q_outliers(fps, q_thresh):
+        '''Identify fixed points with optimized q values that exceed a
+        specified threshold.
+
+        Args:
+            fps: A FixedPoints object containing optimized fixed points and
+            associated metadata.
+
+            q_thresh: A scalar float indicating the threshold on fixed
+            points' q values.
+
+        Returns:
+            A numpy array containing the indices into fps corresponding to
+            the fixed points with q values exceeding the threshold.
+
+        Usage:
+            idx = identify_q_outliers(fps, q_thresh)
+            outlier_fps = fps[idx]
+        '''
+        return np.where(fps.qstar > q_thresh)[0]
+
+    @staticmethod
+    def identify_q_non_outliers(fps, q_thresh):
+        '''Identify fixed points with optimized q values that do not exceed a
+        specified threshold.
+
+        Args:
+            fps: A FixedPoints object containing optimized fixed points and
+            associated metadata.
+
+            q_thresh: A scalar float indicating the threshold on fixed points'
+            q values.
+
+        Returns:
+            A numpy array containing the indices into fps corresponding to the
+            fixed points with q values that do not exceed the threshold.
+
+        Usage:
+            idx = identify_q_non_outliers(fps, q_thresh)
+            non_outlier_fps = fps[idx]
+        '''
+        return np.where(fps.qstar <= q_thresh)[0]
+
+    @staticmethod
+    def identify_distance_non_outliers(fps, initial_states, dist_thresh):
+        ''' Identify fixed points that are "far" from the initial states used
+        to seed the fixed point optimization. Here, "far" means a normalized
+        Euclidean distance from the centroid of the initial states that
+        exceeds a specified threshold. Distances are normalized by the average
+        distances between the initial states and their centroid.
+
+        Empirically this works, but not perfectly. Future work: replace
+        [distance to centroid of initial states] with [nearest neighbors
+        distance to initial states or to other fixed points].
+
+        Args:
+            fps: A FixedPoints object containing optimized fixed points and
+            associated metadata.
+
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            dist_thresh: A scalar float indicating the threshold of fixed
+            points' normalized distance from the centroid of the
+            initial_states. Fixed points with normalized distances greater
+            than this value are deemed putative outliers.
+
+        Returns:
+            A numpy array containing the indices into fps corresponding to the
+            non-outlier fixed points.
+        '''
+
+        if tf_utils.is_lstm(initial_states):
+            initial_states = \
+                tf_utils.convert_from_LSTMStateTuple(initial_states)
+
+        n_inits = initial_states.shape[0]
+        n_fps = fps.n
+
+        # Centroid of initial_states, shape (n_states,)
+        centroid = np.mean(initial_states, axis=0)
+
+        # Distance of each initial state from the centroid, shape (n,)
+        init_dists = np.linalg.norm(initial_states - centroid, axis=1)
+        avg_init_dist = np.mean(init_dists)
+
+        # Normalized distances of initial states to the centroid, shape: (n,)
+        scaled_init_dists = np.true_divide(init_dists, avg_init_dist)
+
+        # Distance of each FP from the initial_states centroid
+        fps_dists = np.linalg.norm(fps.xstar - centroid, axis=1)
+
+        # Normalized
+        scaled_fps_dists = np.true_divide(fps_dists, avg_init_dist)
+
+        init_non_outlier_idx = np.where(scaled_init_dists < dist_thresh)[0]
+        n_init_non_outliers = init_non_outlier_idx.size
+        print('\t\tinitial_states: %d outliers detected (of %d).'
+            % (n_inits - n_init_non_outliers, n_inits))
+
+        fps_non_outlier_idx = np.where(scaled_fps_dists < dist_thresh)[0]
+        n_fps_non_outliers = fps_non_outlier_idx.size
+        print('\t\tfixed points: %d outliers detected (of %d).'
+            % (n_fps - n_fps_non_outliers, n_fps))
+
+        return fps_non_outlier_idx
+
+    def _exclude_distance_outliers(self, fps, initial_states):
+        ''' Removes putative distance outliers from a set of fixed points.
+        See docstring for identify_distance_non_outliers(...).
+        '''
+
+        idx_keep = self.identify_distance_non_outliers(
+            fps,
+            initial_states,
+            self.outlier_distance_scale)
+        return fps[idx_keep]
+
+    def _run_additional_iterations_on_outliers(self, fps):
+        '''Detects outlier states with respect to the q function and runs
+        additional optimization iterations on those states This should only be
+        used after calling either _run_joint_optimization or
+        _run_sequential_optimizations.
+
+        Args:
+            A FixedPoints object containing (partially) optimized fixed points
+            and associated metadata.
+
+        Returns:
+            A FixedPoints object containing the further-optimized fixed points
+            and associated metadata.
+        '''
+
+        '''
+        Known issue:
+            Additional iterations do not always reduce q! This may have to do
+            with learning rate schedules restarting from values that are too
+            large.
+        '''
+
+        def perform_outlier_optimization(fps, method):
+
+            idx_outliers = self.identify_q_outliers(fps, outlier_min_q)
+            n_outliers = len(idx_outliers)
+
+            outlier_fps = fps[idx_outliers]
+            n_prev_iters = outlier_fps.n_iters
+            inputs = outlier_fps.inputs
+            initial_states = self._get_rnncell_compatible_states(
+                outlier_fps.xstar)
+
+            if method == 'joint':
+
+                self._print_if_verbose('\tPerforming another round of '
+                                       'joint optimization, '
+                                       'over outlier states only.')
+
+                updated_outlier_fps = self._run_joint_optimization(
+                    initial_states, inputs)
+
+            elif method == 'sequential':
+
+                self._print_if_verbose('\tPerforming a round of sequential '
+                                       'optimizations, over outlier '
+                                       'states only.')
+
+                updated_outlier_fps = self._run_sequential_optimizations(
+                    initial_states, inputs, q_prior=outlier_fps.qstar)
+
+            else:
+                raise ValueError('Unsupported method: %s.' % method)
+
+            updated_outlier_fps.n_iters += n_prev_iters
+            fps[idx_outliers] = updated_outlier_fps
+
+            return fps
+
+        def outlier_update(fps):
+
+            idx_outliers = self.identify_q_outliers(fps, outlier_min_q)
+            n_outliers = len(idx_outliers)
+
+            self._print_if_verbose('\n\tDetected %d putative outliers '
+                                   '(q>%.2e).' % (n_outliers, outlier_min_q))
+
+            return idx_outliers
+
+        outlier_min_q = np.median(fps.qstar)*self.outlier_q_scale
+        idx_outliers = outlier_update(fps)
+
+        if len(idx_outliers) == 0:
+            return fps
+
+        '''
+        Experimental: Additional rounds of joint optimization. This code
+        currently runs, but does not appear to be very helpful in eliminating
+        outliers.
+        '''
+        if self.method == 'joint':
+            N_ROUNDS = 0 # consider making this a hyperparameter
+            for round in range(N_ROUNDS):
+
+                fps = perform_outlier_optimization(fps, 'joint')
+
+                idx_outliers = outlier_update(fps)
+                if len(idx_outliers) == 0:
+                    return fps
+
+        # Always perform a round of sequential optimizations on any (remaining)
+        # "outliers".
+        fps = perform_outlier_optimization(fps, 'sequential')
+        outlier_update(fps) # For print output only
+
+        return fps
+
+    def _get_rnncell_compatible_states(self, states):
+        '''Converts RNN states if necessary to be compatible with
+        self.rnn_cell.
+
+        Args:
+            states:
+                Either a numpy array or LSTMStateTuple.
+
+        Returns:
+            A representation of states that is compatible with self.rnn_cell.
+            If self.rnn_cell is an LSTMCell, the representation is as an
+            LSTMStateTuple. Otherwise, the representation is a numpy array.
+        '''
+        if self.is_lstm:
+            return tf_utils.convert_to_LSTMStateTuple(states)
+        else:
+            return states
+
+    def _print_if_verbose(self, *args, **kwargs):
+        if self.verbose:
+            print(*args, **kwargs)
+
+    # *************************************************************************
     # In development: *********************************************************
     # *************************************************************************
 
@@ -1304,7 +1310,8 @@ class FixedPointFinder(object):
         # TF sorts in ascending order using REAL PART ONLY. This is a fair
         # comparison since TF is used for both (and thus sorting is the same).
         tf2_vs_tf3 = np.mean(np.abs(e2[:,-1] - e3[:,-1]))
-        print('mean abs difference between leading eig-val using TF methods 2 and 3: %.3e' % tf2_vs_tf3)
+        print('mean abs difference between leading eigenval '
+              'using TF methods 2 and 3: %.3e' % tf2_vs_tf3)
 
         # PROBLEM: FixedPoints sorts in descending order by magnitude. Thus,
         # this is not guaranteed to compare the same eigenvalues, even if both
