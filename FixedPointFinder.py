@@ -197,6 +197,7 @@ class FixedPointFinder(object):
         # *********************************************************************
         # Optimization hyperparameters ****************************************
         # *********************************************************************
+
         self.tol_q = tol_q
         self.tol_dq = tol_dq
         self.method = method
@@ -222,6 +223,7 @@ class FixedPointFinder(object):
     # *************************************************************************
 
     def sample_inputs_and_states(self, inputs, state_traj, n_inits,
+        valid_bxt=None,
         noise_scale=0.0):
         '''Draws random paired samples from the RNN's inputs and hidden-state
         trajectories. Sampled states (but not inputs) can optionally be
@@ -238,6 +240,10 @@ class FixedPointFinder(object):
             numpy arrays. Contains state trajectories of the RNN, given inputs.
 
             n_inits: int specifying the number of sampled states to return.
+
+            valid_bxt (optional): [n_batch x n_time] boolean mask indicated
+            the set of trials and timesteps from which to sample. Default: all
+            trials and timesteps are assumed valid.
 
             noise_scale (optional): non-negative float specifying the standard
             deviation of IID Gaussian noise samples added to the sampled
@@ -261,12 +267,16 @@ class FixedPointFinder(object):
         [n_batch, n_time, n_states] = state_traj_bxtxd.shape
         n_inputs = inputs.shape[2]
 
+        valid_bxt = self._get_valid_mask(n_batch, n_time, valid_bxt=valid_bxt)
+        trial_indices, time_indices = \
+            self._sample_trial_and_time_indices(valid_bxt, n_inits)
+
         # Draw random samples from inputs and state trajectories
         input_samples = np.zeros([n_inits, n_inputs])
         state_samples = np.zeros([n_inits, n_states])
         for init_idx in range(n_inits):
-            trial_idx = self.rng.randint(n_batch)
-            time_idx = self.rng.randint(n_time)
+            trial_idx = trial_indices[init_idx]
+            time_idx = time_indices[init_idx]
             input_samples[init_idx,:] = inputs[trial_idx,time_idx,:]
             state_samples[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
 
@@ -280,6 +290,7 @@ class FixedPointFinder(object):
             return input_samples, state_samples
 
     def sample_states(self, state_traj, n_inits,
+                      valid_bxt=None,
                       noise_scale=0.0):
         '''Draws random samples from trajectories of the RNN state. Samples
         can optionally be corrupted by independent and identically distributed
@@ -292,6 +303,10 @@ class FixedPointFinder(object):
             numpy arrays. Contains example trajectories of the RNN state.
 
             n_inits: int specifying the number of sampled states to return.
+
+            valid_bxt (optional): [n_batch x n_time] boolean mask indicated
+            the set of trials and timesteps from which to sample. Default: all
+            trials and timesteps are assumed valid.
 
             noise_scale (optional): non-negative float specifying the standard
             deviation of IID Gaussian noise samples added to the sampled
@@ -306,9 +321,6 @@ class FixedPointFinder(object):
             ValueError if noise_scale is negative.
         '''
 
-        print('\nWarning: sample_states is deprecated and will be removed in a'
-            ' future version--use sample_inputs_and_states instead.')
-
         if self.is_lstm:
             state_traj_bxtxd = \
                 tf_utils.convert_from_LSTMStateTuple(state_traj)
@@ -317,11 +329,15 @@ class FixedPointFinder(object):
 
         [n_batch, n_time, n_states] = state_traj_bxtxd.shape
 
+        valid_bxt = self._get_valid_mask(n_batch, n_time, valid_bxt=valid_bxt)
+        trial_indices, time_indices = \
+            self._sample_trial_and_time_indices(valid_bxt, n_inits)
+
         # Draw random samples from state trajectories
         states = np.zeros([n_inits, n_states])
         for init_idx in range(n_inits):
-            trial_idx = self.rng.randint(n_batch)
-            time_idx = self.rng.randint(n_time)
+            trial_idx = trial_indices[init_idx]
+            time_idx = time_indices[init_idx]
             states[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
 
         # Add IID Gaussian noise to the sampled states
@@ -921,6 +937,55 @@ class FixedPointFinder(object):
             return self.rnn_cell.state_size[0] + self.rnn_cell.state_size[1]
         else:
             return self.rnn_cell.state_size
+
+    def _sample_trial_and_time_indices(self, valid_bxt, n):
+        ''' Generate n random indices corresponding to True entries in
+        valid_bxt. Sampling is performed without replacement.
+
+        Args:
+            valid_bxt: [n_batch x n_time] bool numpy array.
+
+            n: integer specifying the number of samples to draw.
+
+        returns:
+            (trial_indices, time_indices): tuple containing random indices
+            into valid_bxt such that valid_bxt[i, j] is True for every
+            (i=trial_indices[k], j=time_indices[k])
+        '''
+
+        (trial_idx, time_idx) = np.nonzero(valid_bxt)
+        sample_indices = self.rng.randint(n, size=n)
+        return trial_idx[sample_indices], time_idx[sample_indices]
+
+    @staticmethod
+    def _get_valid_mask(n_batch, n_time, valid_bxt=None):
+        ''' Returns an appropriately sized boolean mask.
+
+        Args:
+            (n_batch, n_time) is the shape of the desired mask.
+
+            valid_bxt: (optional) proposed boolean mask.
+
+        Returns:
+            A shape (n_batch, n_time) boolean mask.
+
+        Raises:
+            AssertionError if valid_bxt does not have shape (n_batch, n_time)
+        '''
+
+        if valid_bxt is None:
+            valid_bxt = np.ones((n_batch, n_time), dtype=np.bool)
+        else:
+
+            assert (valid_bxt.shape[0] == n_batch and
+                valid_bxt.shape[1] == n_time),\
+                ('valid_bxt.shape should be %s, but is %s'
+                 % ((n_batch, n_time), valid_bxt.shape))
+
+            if not valid_bxt.dtype == np.bool:
+                valid_bxt = valid_bxt.astype(np.bool)
+
+        return valid_bxt
 
     def _add_gaussian_noise(self, data, noise_scale=0.0):
         ''' Adds IID Gaussian noise to Numpy data.
