@@ -162,3 +162,25 @@ def safe_index(states, index):
         return tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
     else:
         return states[index]
+
+def safe_concat(states):
+    '''
+    Returns a [b x t x d] Tensor or Numpy array
+
+    states is either:
+    1) a [b x t x d] Tensor
+    2) an LSTMStateTuple with .c and .h as [b x t x d] Tensors
+    3) a tuple or list consisting of two instances of 1) or two
+       instances of 2), which correspond to forward and backward
+       passes of a bidirectional RNN.
+    '''
+
+    if isinstance(states, tf.nn.rnn_cell.LSTMStateTuple):
+        return convert_from_LSTMStateTuple(states)
+    elif isinstance(states, tuple) or isinstance(states, list):
+        return tf.concat(
+            [safe_concat(item) for item in states], axis=2)
+    elif isinstance(states, np.ndarray):
+        return states
+    else:
+    	raise ValueError('Unsupported type: %s' % str(type(states)))
