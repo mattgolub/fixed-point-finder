@@ -20,7 +20,6 @@ if os.environ.get('DISPLAY','') == '':
     print('No display found. Using non-interactive Agg backend.')
     import matplotlib
     matplotlib.use('Agg')
-
 import matplotlib.pyplot as plt
 from RecurrentWhisperer import RecurrentWhisperer
 
@@ -531,6 +530,10 @@ class FlipFlop(RecurrentWhisperer):
 
     @staticmethod
     def refresh_figs():
-        plt.ion()
-        plt.show()
-        plt.pause(1e-10)
+        if os.environ.get('DISPLAY','') == '':
+            # If executing on a server with no graphical backend...
+            pass
+        else:
+            plt.ion()
+            plt.show()
+            plt.pause(1e-10)
