@@ -443,18 +443,14 @@ class FlipFlop(RecurrentWhisperer):
         FIG_WIDTH = 6 # inches
         FIG_HEIGHT = 3 # inches
 
+        fig = self._get_fig('example_trials',
+            width=FIG_WIDTH,
+            height=FIG_HEIGHT)
+
         hps = self.hps
         n_batch = self.hps.data_hps['n_batch']
         n_time = self.hps.data_hps['n_time']
         n_plot = np.min([hps.n_trials_plot, n_batch])
-
-        if 'example_trials' not in self.figs:
-            self.figs['example_trials'] = plt.figure(
-                figsize=(FIG_WIDTH, FIG_HEIGHT),
-                tight_layout=True)
-
-        fig = self.figs['example_trials']
-        plt.clf()
 
         inputs = data['inputs']
         output = data['output']
@@ -527,13 +523,3 @@ class FlipFlop(RecurrentWhisperer):
                 linestyle='--')
 
         plt.xlim(-1, n_time)
-
-    @staticmethod
-    def refresh_figs():
-        if os.environ.get('DISPLAY','') == '':
-            # If executing on a server with no graphical backend...
-            pass
-        else:
-            plt.ion()
-            plt.show()
-            plt.pause(1e-10)
