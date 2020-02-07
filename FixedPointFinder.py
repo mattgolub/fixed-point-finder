@@ -25,6 +25,7 @@ import tf_utils
 class FixedPointFinder(object):
 
     default_hps = {
+        'feed_dict': {},
         'tol_q': 1e-12,
         'tol_dq': 1e-20,
         'max_iters': 5000,
@@ -48,10 +49,10 @@ class FixedPointFinder(object):
         'alr_hps': {},
         'agnc_hps': {},
         'adam_hps': {'epsilon': 0.01},
-        'rnn_cell_feed_dict': {},
         }
 
     def __init__(self, rnn_cell, sess,
+        feed_dict=default_hps['feed_dict'],
         tol_q=default_hps['tol_q'],
         tol_dq=default_hps['tol_dq'],
         max_iters=default_hps['max_iters'],
@@ -72,8 +73,7 @@ class FixedPointFinder(object):
         n_iters_per_print_update=default_hps['n_iters_per_print_update'],
         alr_hps=default_hps['alr_hps'],
         agnc_hps=default_hps['agnc_hps'],
-        adam_hps=default_hps['adam_hps'],
-        rnn_cell_feed_dict=default_hps['rnn_cell_feed_dict']):
+        adam_hps=default_hps['adam_hps']):
         '''Creates a FixedPointFinder object.
 
         Optimization terminates once every initialization satisfies one or
@@ -182,7 +182,7 @@ class FixedPointFinder(object):
         '''
 
         self.rnn_cell = rnn_cell
-        self.rnn_cell_feed_dict = rnn_cell_feed_dict
+        self.feed_dict = feed_dict
         self.session = sess
         self.tf_dtype = getattr(tf, tf_dtype)
         self.np_dtype = self.tf_dtype.as_numpy_dtype
@@ -806,6 +806,7 @@ class FixedPointFinder(object):
         iter_count = 1
         t_start = time.time()
         q_prev = np.tile(np.nan, q.shape.as_list())
+        rnn_cell_feed_dict = self.feed_dict
         while True:
 
             iter_learning_rate = adaptive_learning_rate()
@@ -814,7 +815,7 @@ class FixedPointFinder(object):
             feed_dict = {learning_rate: iter_learning_rate,
                          grad_norm_clip_val: iter_clip_val,
                          q_prev_tf: q_prev}
-            feed_dict.update(self.rnn_cell_feed_dict)
+            feed_dict.update(rnn_cell_feed_dict)
 
             (ev_train,
             ev_x,
