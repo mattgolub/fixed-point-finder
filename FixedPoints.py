@@ -632,3 +632,17 @@ class FixedPoints(object):
         if self.J_xstar is not None:
             print('\nThe Jacobians at the fixed points:')
             print(self.J_xstar)
+
+    def print_shapes(self):
+        ''' Prints the shapes of the data attributes of the fixed points.
+
+        Args:
+            None.
+
+        Returns:
+            None.
+        '''
+
+        for attr_name in FixedPoints._data_attrs:
+            attr = getattr(self, attr_name)
+            print('%s: %s' % (attr_name, str(attr.shape)))
