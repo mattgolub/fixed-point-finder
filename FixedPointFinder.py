@@ -9,12 +9,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import pdb
 import numpy as np
 import time
+from copy import deepcopy
 import tensorflow as tf
 from tensorflow.python.ops import parallel_for as pfor
 import absl
+import pdb
 
 from FixedPoints import FixedPoints
 from AdaptiveLearningRate import AdaptiveLearningRate
@@ -24,7 +25,8 @@ import tf_utils
 
 class FixedPointFinder(object):
 
-    default_hps = {
+
+    _default_hps = {
         'feed_dict': {},
         'tol_q': 1e-12,
         'tol_dq': 1e-20,
@@ -51,29 +53,45 @@ class FixedPointFinder(object):
         'adam_hps': {'epsilon': 0.01},
         }
 
+    @staticmethod
+    def default_hps():
+        ''' Returns a deep copy of the default hyperparameters dict.
+
+        The deep copy protects against external updates to the defaults, which in turn protects against unintended interactions with the hashing done by the Hyperparameters class.
+
+        Args:
+            None.
+
+        Returns:
+            dict of hyperparameters.
+
+
+        '''
+        return deepcopy(FixedPointFinder._default_hps)
+
     def __init__(self, rnn_cell, sess,
-        feed_dict=default_hps['feed_dict'],
-        tol_q=default_hps['tol_q'],
-        tol_dq=default_hps['tol_dq'],
-        max_iters=default_hps['max_iters'],
-        method=default_hps['method'],
-        do_rerun_q_outliers=default_hps['do_rerun_q_outliers'],
-        outlier_q_scale=default_hps['outlier_q_scale'],
+        feed_dict=_default_hps['feed_dict'],
+        tol_q=_default_hps['tol_q'],
+        tol_dq=_default_hps['tol_dq'],
+        max_iters=_default_hps['max_iters'],
+        method=_default_hps['method'],
+        do_rerun_q_outliers=_default_hps['do_rerun_q_outliers'],
+        outlier_q_scale=_default_hps['outlier_q_scale'],
         do_exclude_distance_outliers=\
-            default_hps['do_exclude_distance_outliers'],
-        outlier_distance_scale=default_hps['outlier_distance_scale'],
-        tol_unique=default_hps['tol_unique'],
-        max_n_unique=default_hps['max_n_unique'],
-        do_compute_jacobians=default_hps['do_compute_jacobians'],
-        do_decompose_jacobians=default_hps['do_decompose_jacobians'],
-        tf_dtype=default_hps['tf_dtype'],
-        random_seed=default_hps['random_seed'],
-        verbose=default_hps['verbose'],
-        super_verbose=default_hps['super_verbose'],
-        n_iters_per_print_update=default_hps['n_iters_per_print_update'],
-        alr_hps=default_hps['alr_hps'],
-        agnc_hps=default_hps['agnc_hps'],
-        adam_hps=default_hps['adam_hps']):
+            _default_hps['do_exclude_distance_outliers'],
+        outlier_distance_scale=_default_hps['outlier_distance_scale'],
+        tol_unique=_default_hps['tol_unique'],
+        max_n_unique=_default_hps['max_n_unique'],
+        do_compute_jacobians=_default_hps['do_compute_jacobians'],
+        do_decompose_jacobians=_default_hps['do_decompose_jacobians'],
+        tf_dtype=_default_hps['tf_dtype'],
+        random_seed=_default_hps['random_seed'],
+        verbose=_default_hps['verbose'],
+        super_verbose=_default_hps['super_verbose'],
+        n_iters_per_print_update=_default_hps['n_iters_per_print_update'],
+        alr_hps=_default_hps['alr_hps'],
+        agnc_hps=_default_hps['agnc_hps'],
+        adam_hps=_default_hps['adam_hps']):
         '''Creates a FixedPointFinder object.
 
         Optimization terminates once every initialization satisfies one or
@@ -955,7 +973,9 @@ class FixedPointFinder(object):
         '''
 
         (trial_idx, time_idx) = np.nonzero(valid_bxt)
-        sample_indices = self.rng.randint(n, size=n)
+        max_sample_index = len(trial_idx) # same as len(time_idx)
+        sample_indices = self.rng.randint(max_sample_index, size=n)
+
         return trial_idx[sample_indices], time_idx[sample_indices]
 
     @staticmethod
