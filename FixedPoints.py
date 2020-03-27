@@ -98,12 +98,20 @@ class FixedPoints(object):
             which results in an appropriately sized numpy array of NaNs.
             Default: None.
 
+            eigval_J_xstar: [n x n_states] numpy array with
+            eigval_J_xstar[i, :] containing the eigenvalues of
+            J_xstar[i, :, :].
+
+            eigvec_J_xstar: [n x n_states x n_states] numpy array with
+            eigvec_J_xstar[i, :, :] containing the eigenvectors of
+            J_xstar[i, :, :].
+
             do_alloc_nan: Bool indicating whether to initialize all data
             attributes (all optional args above) as NaN-filled numpy arrays.
             Default: False.
 
-                If True, n, n_states and n_inputs must be provided. These values
-                are otherwise ignored:
+                If True, n, n_states and n_inputs must be provided. These
+                values are otherwise ignored:
 
                 n: Positive int specifying the number of fixed points to
                 allocate space for.
@@ -265,6 +273,47 @@ class FixedPoints(object):
 
         return self[idx]
 
+    def transform(self, U, offset=0.):
+        ''' Apply an affine transformation to the state-space representation.
+        This may be helpful for plotting fixed points in a given linear
+        subspace (e.g., PCA or an RNN readout space).
+
+
+        Args:
+            U: shape (n_states, k) numpy array projection matrix.
+
+            offset (optional): shape (k,) numpy translation vector. Default: 0.
+
+        Returns:
+            A FixedPoints object.
+        '''
+
+        # These are all transformed
+        _xstar = np.matmul(self.xstar, U) + offset
+        _x_init = np.matmul(self.x_init, U) + offset
+        _F_xstar = np.matmul(self.F_xstar, U) + offset
+        _eigvec_J_xstar = np.matmul(U.T, self.eigvec_J_xstar) + offset
+
+        # These are unchanged
+        _inputs = self.inputs
+        _qstar = self.qstar
+        _dq = self.dq
+        _n_iters = self.n_iters
+        _eigval_J_xstar = self.eigval_J_xstar
+
+        transformed_fps = FixedPoints(
+            xstar=_xstar,
+            x_init=_x_init,
+            inputs=_inputs,
+            F_xstar=_F_xstar,
+            qstar=_qstar,
+            dq=_dq,
+            n_iters=_n_iters,
+            eigval_J_xstar=_eigval_J_xstar,
+            eigvec_J_xstar=_eigvec_J_xstar)
+
+        return transformed_fps
+
     @staticmethod
     def concatenate(fps_seq):
         ''' Join a sequence of FixedPoints objects.
@@ -324,12 +373,24 @@ class FixedPoints(object):
     def decompose_jacobians(self, do_batch=True, str_prefix=''):
         '''Adds the following fields to the FixedPoints object:
 
-        eigval_J_xstar: [n x n_states] numpy array containing with
-        eigval_J_xstar[i, :] containing the eigenvalues of J_xstar[i, :, :].
+        eigval_J_xstar: [n x n_states] numpy array with eigval_J_xstar[i, :]
+        containing the eigenvalues of J_xstar[i, :, :].
 
         eigvec_J_xstar: [n x n_states x n_states] numpy array containing with
         eigvec_J_xstar[i, :, :] containing the eigenvectors of
         J_xstar[i, :, :].
+
+        Args:
+            do_batch (optional): bool indicating whether to perform a batch
+            decomposition. This is typically faster as long as sufficient
+            memory is available. If False, decompositions are performed
+            one-at-a-time, sequentially, which may be necessary if the batch
+            computation requires more memory than is available. Default: True.
+
+            str_prefix (optional): String to be pre-pended to print statements.
+
+        Returns:
+            None.
         '''
 
         if self.has_decomposed_jacobians:
@@ -503,7 +564,7 @@ class FixedPoints(object):
 
     def __len__(self):
         '''Returns the number of fixed points stored in the object.'''
-        return self.n_inits
+        return self.n
 
     @staticmethod
     def _safe_index(x, idx):
