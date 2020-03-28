@@ -268,9 +268,13 @@ class FixedPointFinder(object):
             states. Default: 0.0.
 
         Returns:
+
+            inputs: Sampled RNN inputs as a [n_inits x n_inputs] numpy array.
+            These are paired with the states in initial_states (below).
+
             initial_states: Sampled RNN states as a [n_inits x n_states] numpy
             array or as an LSTMStateTuple with .c and .h as
-            [n_inits x n_states] numpy arrays (type matches than of
+            [n_inits x n_states] numpy arrays (type matches that of
             state_traj).
 
         Raises:
@@ -370,9 +374,9 @@ class FixedPointFinder(object):
         '''Finds RNN fixed points and the Jacobians at the fixed points.
 
         Args:
-            initial_states: Either an [n x n_dims] numpy array or an
+            initial_states: Either an [n x n_states] numpy array or an
             LSTMStateTuple with initial_states.c and initial_states.h as
-            [n x n_dims] numpy arrays. These data specify the initial
+            [n x n_states] numpy arrays. These data specify the initial
             states of the RNN, from which the optimization will search for
             fixed points. The choice of type must be consistent with state
             type of rnn_cell.
@@ -450,15 +454,27 @@ class FixedPointFinder(object):
 
         if self.do_compute_jacobians:
             if unique_fps.n > 0:
-                self._print_if_verbose('\tComputing Jacobian at %d '
+
+                self._print_if_verbose('\tComputing recurrent Jacobian at %d '
                     'unique fixed points.' % unique_fps.n)
-                J_np, J_tf = self._compute_multiple_jacobians_np(unique_fps)
-                unique_fps.J_xstar = J_np
+                dFdx, dFdx_tf = self._compute_recurrent_jacobians(unique_fps)
+                unique_fps.J_xstar = dFdx
+
+                self._print_if_verbose('\tComputing input Jacobian at %d '
+                    'unique fixed points.' % unique_fps.n)
+                dFdu, dFdu_tf = self._compute_input_jacobians(unique_fps)
+                unique_fps.dFdu = dFdu
+
             else:
                 # Allocate empty arrays, needed for robust concatenation
                 n_states = unique_fps.n_states
-                shape_J_xstar = (0, n_states, n_states)
-                unique_fps.J_xstar = unique_fps._alloc_nan(shape_J_xstar)
+                n_inputs = unique_fps.n_inputs
+
+                shape_dFdx = (0, n_states, n_states)
+                shape_dFdu = (0, n_states, n_inputs)
+
+                unique_fps.J_xstar = unique_fps._alloc_nan(shape_dFdx)
+                unique_fps.dFdu = unique_fps._alloc_nan(shape_dFdu)
 
             if self.do_decompose_jacobians:
                 # self._test_decompose_jacobians(unique_fps, J_np, J_tf)
@@ -708,19 +724,19 @@ class FixedPointFinder(object):
             actual optimization objective minimized is a combination of these
             values.
 
-            x: An [n_inits x n_dims] tf.Variable (the optimization variable)
+            x: An [n_inits x n_states] tf.Variable (the optimization variable)
             representing RNN states, initialized to the values in
-            initial_states. If the RNN is an LSTM, n_dims represents the
+            initial_states. If the RNN is an LSTM, n_states represents the
             concatenated hidden and cell states.
 
-            F: An [n_inits x n_dims] tf op representing the state transition
+            F: An [n_inits x n_states] tf op representing the state transition
             function of the RNN applied to x.
 
         Returns:
-            ev_x: An [n_inits x n_dims] numpy array containing the optimized
+            ev_x: An [n_inits x n_states] numpy array containing the optimized
             fixed points, i.e., the RNN states that minimize q.
 
-            ev_F: An [n_inits x n_dims] numpy array containing the values in
+            ev_F: An [n_inits x n_states] numpy array containing the values in
             ev_x after transitioning through one step of the RNN.
 
             ev_q: A scalar numpy float specifying the value of the objective
@@ -884,7 +900,7 @@ class FixedPointFinder(object):
         iter_count = np.tile(iter_count, ev_q.shape)
         return ev_x, ev_F, ev_q, ev_dq, iter_count
 
-    def _compute_multiple_jacobians_np(self, fps):
+    def _compute_recurrent_jacobians(self, fps):
         '''Computes the Jacobian of the RNN state transition function at the
         specified fixed points (i.e., partial derivatives with respect to the
         hidden states).
@@ -914,6 +930,61 @@ class FixedPointFinder(object):
            J_tf = pfor.batch_jacobian(F_tf, x_tf)
         except absl.flags._exceptions.UnparsedFlagAccessError:
            J_tf = pfor.batch_jacobian(F_tf, x_tf, use_pfor=False)
+
+        J_np = self.session.run(J_tf)
+
+        return J_np, J_tf
+
+    def _compute_input_jacobians(self, fps):
+        ''' Computes the partial derivatives of the RNN state transition
+        function with respect to the RNN's inputs.
+
+        Args:
+            fps: A FixedPoints object containing the RNN states (fps.xstar)
+            and inputs (fps.inputs) at which to compute the Jacobians.
+
+        Returns:
+            J_np: An [n x n_states x n_inputs] numpy array containing the
+            partial derivatives of the RNN state transition function at the
+            inputs specified in fps, given the states in fps.
+
+            J_tf: The TF op representing the partial derivatives.
+        '''
+
+        def grab_RNN_for_dFdu(initial_states, inputs):
+            # Modified variant of _grab_RNN(), repurposed for dFdu
+
+            # Same as in _grab_RNN()
+            x, x_rnncell = self._build_state_vars(initial_states)
+
+            # Different from _grab_RNN(), which builds inputs as tf.constant
+            inputs_tf = tf.Variable(inputs, dtype=self.tf_dtype)
+
+            output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
+
+            if self.is_lstm:
+                F = tf_utils.convert_from_LSTMStateTuple(F_rnncell)
+            else:
+                F = F_rnncell
+
+            init = tf.variables_initializer(var_list=[x, inputs_tf])
+            self.session.run(init)
+
+            return inputs_tf, F
+
+        inputs_np = fps.inputs
+
+        if self.is_lstm:
+            states_np = tf_utils.convert_to_LSTMStateTuple(fps.xstar)
+        else:
+            states_np = fps.xstar
+
+        inputs_tf, F_tf = grab_RNN_for_dFdu(states_np, inputs_np)
+
+        try:
+           J_tf = pfor.batch_jacobian(F_tf, inputs_tf)
+        except absl.flags._exceptions.UnparsedFlagAccessError:
+           J_tf = pfor.batch_jacobian(F_tf, inputs_tf, use_pfor=False)
 
         J_np = self.session.run(J_tf)
 
@@ -1286,60 +1357,152 @@ class FixedPointFinder(object):
     # In development: *********************************************************
     # *************************************************************************
 
-    def _compute_dFdu(self, fps):
-        ''' Computes the partial derivatives of the RNN state transition
-        function with respect to the RNN's inputs.
+    def approximate_update(self, states, inputs, fps):
+        ''' Computes approximate one-step updates based on linearized dynamics
+        around fixed points. See _compute_approx_one_step_update() docstring
+        for the underlying math.
+
+        This function computes an approximate based on every pair (states[i],
+        inputs[i]) and based on the linearized dynamics about every fixed
+        point fps[j].
 
         Args:
-            fps: A FixedPoints object containing the RNN states (fps.xstar)
-            and inputs (fps.inputs) at which to compute the Jacobians.
+            states: numpy array with shape (n, n_states) of RNN states for
+            which approximate updates will be computed. In math, each row
+            states[i] corresponds to an x(t) as described above.
+
+            inputs: numpy array with shape (n, n_inputs) of RNN inputs. In
+            math, each row inputs[i] corresponds to a u(t+1) as described
+            above. Inputs are paired with states, such that an update is
+            approximated for each pair (states[i], inputs[i]). Alternatively,
+            inputs can be a shape (n_inputs,) or (1, n_inputs) numpy array
+            specifying a single set of inputs to apply to all state updates.
+
+            fps: A FixedPoints object containing the (possible many) fixed
+            points about which to compute linearized dynamics.
 
         Returns:
-            J_np: An [n x n_states x n_inputs] numpy array containing the
-            partial derivatives of the RNN state transition function at the
-            inputs specified in fps, given the states in fps.
-
-            J_tf: The TF op representing the partial derivatives.
+            approx_states: shape (k, n, n_states) numpy array containing the
+            approximate one-step updated states. Here, k is the number of fixed
+            points in fps, and n is the number of state-input pairs in states
+            and inputs.
         '''
 
-        def grab_RNN_for_dFdu(initial_states, inputs):
-            # Modified variant of _grab_RNN(), repurposed for dFdu
-
-            # Same as in _grab_RNN()
-            x, x_rnncell = self._build_state_vars(initial_states)
-
-            # Different from _grab_RNN(), which builds inputs as tf.constant
-            inputs_tf = tf.Variable(inputs, dtype=self.tf_dtype)
-
-            output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
-
-            if self.is_lstm:
-                F = tf_utils.convert_from_LSTMStateTuple(F_rnncell)
-            else:
-                F = F_rnncell
-
-            init = tf.variables_initializer(var_list=[x, inputs_tf])
-            self.session.run(init)
-
-            return inputs_tf, F
-
-        inputs_np = fps.inputs
+        # This version, all computation done in numpy
+        # To do: consider converting to TF for GPU acceleration.
 
         if self.is_lstm:
-            states_np = tf_utils.convert_to_LSTMStateTuple(fps.xstar)
+            raise NotImplementedError('Not implemented for LSTMs.')
+
+        if hasattr(fps, 'dFdu'):
+            dFdu = fps.dFdu
         else:
-            states_np = fps.xstar
+            print('Computing input Jacobians...', end='')
+            dFdu, dFdu_tf = self._compute_input_jacobians(fps)
+            print('done.')
 
-        inputs_tf, F_tf = grab_RNN_for_dFdu(states_np, inputs_np)
+        n, n_states = states.shape
+        approx_states = np.zeros((fps.n, n, n_states))
 
-        try:
-           J_tf = pfor.batch_jacobian(F_tf, inputs_tf)
-        except absl.flags._exceptions.UnparsedFlagAccessError:
-           J_tf = pfor.batch_jacobian(F_tf, inputs_tf, use_pfor=False)
+        for idx in range(fps.n):
+            A = fps.J_xstar[idx] # shape (n_states, n_states)
+            B = dFdu[idx] # shape (n_states, n_inputs)
 
-        J_np = self.session.run(J_tf)
+            xstar = fps.xstar[idx] # shape (n_states,)
+            u = fps.inputs[idx] # shape (n_inputs,)
 
-        return J_np, J_tf
+            approx_states[idx] = self._compute_approx_one_step_update(
+                states, inputs, A, xstar, B, u)
+
+        return approx_states
+
+    def _compute_approx_one_step_update(
+        self, states, inputs, dFdx, xstar, dFdu, u):
+        ''' Approximate one-step updates based on linearized dynamics around
+        a fixed point.
+
+        In general, the RNN update is:
+
+            x(t+1) = F(x(t), u(t+1)),
+
+        for states x and inputs u. In the strict definition, a state x* is
+        considered a fixed point with input u when:
+
+            x* =  F(x*, u)
+
+        (in practice this can be less string to include slow points that can
+        also provide meaningful insight into the RNN's dynamics). Near a fixed
+        point, the dynamics can be well-approximated by the linearized dynamics
+        about that fixed point. I.e., for x(t) near x*, F(x(t), u(t+1)) is
+        well-approximated by the first-order Taylor expansion:
+
+            x(t+1) ~ F(x*, u) + A (x(t) - x*) + B (u(t+1) - u)
+                   =    x*    + A (x(t) - x*) + B (u(t+1) - u)
+
+        where A is the recurrent Jacobian dF/dx evaluated at (x*, u), B is the
+        input Jacobian dF/du evaluated at (x*, u), and ~ denotes approximate
+        equivalence. If the RNN is actually a linear dynamical system, then
+        this equivalence is exact for any x(t), u (this can be helpful for
+        proofs and testing).
+
+        This function computes this approximate update for every state (x(t)),
+        input (u(t+1)) pair based on the linearized dynamics about a single
+        fixed point.
+
+        Args:
+            states: numpy array with shape (n, n_states) of RNN states for
+            which approximate updates will be computed. In math, each row
+            states[i] corresponds to an x(t) as described above.
+
+            inputs: numpy array with shape (n, n_inputs) of RNN inputs. In
+            math, each row inputs[i] corresponds to a u(t+1) as described
+            above. Inputs are paired with states, such that an update is
+            approximated for each pair (states[i], inputs[i]). Alternatively,
+            inputs can be a shape (n_inputs,) or (1, n_inputs) numpy array
+            specifying a single set of inputs to apply to all state updates.
+
+            dFdx: numpy array with shape (n_states, n_states) containing the
+            Jacobian of the RNN's recurrent dynamics (i.e., with respect to
+            the RNN state) at fixed point x* and input u.
+
+            xstar: numpy array with shape (n_states,) containing the fixed
+            point (x* in the math above) about which the dynamics were
+            linearized.
+
+            dFdu: numpy array with shape (n_states, n_inputs) containing the
+            Jacobian of the RNN's input dynamics (i.e., with respect to the
+            RNN inputs) at fixed point x* and input u.
+
+            u: numpy array with shape (n_inputs,) containing the input for
+            which x* is a fixed point (also u in the math above).
+
+        Returns:
+            approx_states: shape (k, n, n_states) numpy array containing the
+            approximate one-step updated states.
+        '''
+
+        # This version, all computation done in numpy
+        # To do: consider converting to TF for GPU acceleration.
+
+        n_states = self._state_size
+        n_inputs = self._input_size
+
+        assert (xstar.shape == (n_states,))
+        assert (u.shape == (n_inputs,))
+        assert (dFdx.shape == (n_states, n_states))
+        assert (dFdu.shape == (n_states, n_inputs))
+        assert (states.shape[-1] == n_states)
+        assert (inputs.shape[-1] == n_inputs)
+
+        term1 = xstar # shape (n_states,)
+
+        # shape (n, n_states) or (1, n_states) or (n_states,)
+        term2 = np.matmul(dFdx, np.transpose(states - xstar)).T
+
+        # shape (n, n_states) or (1, n_states) or (n_states,)
+        term3 = np.matmul(dFdu, np.transpose(inputs - u)).T
+
+        return term1 + term2 + term3 # shape (n, n_states)
 
     '''Playing around to see if Jacobian decomposition can be done faster if
     done in Tensorflow (currently it is done in numpy--see FixedPoints.py).
