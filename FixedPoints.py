@@ -14,6 +14,8 @@ import pdb
 import numpy as np
 import cPickle
 
+from Timer import Timer
+
 class FixedPoints(object):
     '''
     A class for storing fixed points and associated data.
@@ -124,9 +126,9 @@ class FixedPoints(object):
 
             tol_unique: Positive scalar specifying the numerical precision
             required to label two fixed points as being unique from one
-            another. Two fixed points will be considered unique if they differ
-            by this amount (or more) along any dimension. This tolerance is
-            used to discard numerically similar fixed points. Default: 1e-3.
+            another. Two fixed points are considered unique if the 2-norm of
+            the difference between their concatenated (xstar, inputs) is
+            greater than this tolerance. Default: 1e-3.
 
             dtype: Data type for representing all of the object's data.
             Default: numpy.float32.
@@ -233,7 +235,7 @@ class FixedPoints(object):
 
     def get_unique(self):
         '''Identifies unique fixed points. Among duplicates identified,
-        currently an arbitrary one is retained.
+        this keeps the one with smallest qstar.
 
         Args:
             None.
@@ -242,36 +244,40 @@ class FixedPoints(object):
             A FixedPoints object containing only the unique fixed points and
             their associated data. Uniqueness is determined down to tol_unique.
         '''
+        assert (self.xstar is not None),\
+            ('Cannot find unique fixed points because self.xstar is None.')
 
-        ''' To do:
-                Consider updating to leverage __contains__. This would likely
-                involve slow python for loops.
-
-                Of a set of matching fixed points (down to tol_unique), retain
-                the one with the smallest qstar. Currently, an arbitrary match
-                is retained.
-        '''
-
-        def unique_rows(x, approx_tol):
-            # Quick and dirty. Can update using pdist if necessary
-            d = int(np.round(np.max([0 -np.log10(approx_tol)])))
-            ux, idx = np.unique(x.round(decimals=d),
-                                axis=0,
-                                return_index=True)
-            return ux, idx
-
-        if self.xstar is not None:
-            if self.inputs is not None:
-                data = np.concatenate((self.xstar, self.inputs), axis=1)
-            else:
-                data = self.xstar
+        if self.inputs is None:
+            data_nxd = self.xstar
         else:
-            raise ValueError('Cannot find unique fixed points because '
-                'self.xstar is None.')
+            data_nxd = np.concatenate((self.xstar, self.inputs), axis=1)
 
-        unique_data, idx = unique_rows(data, self.tol_unique)
+        idx_keep = []
+        idx_checked = np.zeros(self.n, dtype=np.bool)
+        for idx in range(self.n):
 
-        return self[idx]
+            if idx_checked[idx]:
+                # If this FP matched others, we've already determined which
+                # of those matching FPs to keep. Repeating would simply
+                # identify the same FP to keep.
+                continue
+
+            # Don't compare against FPs we've already checked
+            idx_check = np.where(~idx_checked)[0]
+            fps_check = self[idx_check] # only check against these FPs
+            idx_idx_check = fps_check.find(self[idx]) # indexes into fps_check
+            idx_match = idx_check[idx_idx_check] # indexes into self
+
+            if len(idx_match)==1:
+                # Only matches with itself
+                idx_keep.append(idx)
+            else:
+                qstars_match = self.qstar[idx_match]
+                idx_candidate = idx_match[np.argmin(qstars_match)]
+                idx_keep.append(idx_candidate)
+                idx_checked[idx_match] = True
+
+        return self[idx_keep]
 
     def transform(self, U, offset=0.):
         ''' Apply an affine transformation to the state-space representation.
@@ -587,14 +593,14 @@ class FixedPoints(object):
     def find(self, fp):
         '''Searches in the current FixedPoints object for matches to a
         specified fixed point. Two fixed points are defined as matching
-        if none of the element-wise differences between their .xstar or
-        .inputs properties differ by more than tol_unique.
+        if the 2-norm of the difference between their concatenated (xstar,
+        inputs) is within tol_unique).
 
         Args:
             fp: A FixedPoints object containing exactly one fixed point.
 
         Returns:
-            [n_occurrences,] numpy array specifying indices into the current
+            shape (n_matches,) numpy array specifying indices into the current
             FixedPoints object where matches to fp were found.
         '''
 
@@ -605,27 +611,33 @@ class FixedPoints(object):
         if isinstance(fp, FixedPoints):
             if fp.n_states == self.n_states and fp.n_inputs == self.n_inputs:
 
-                self_data = np.concatenate((self.xstar, self.inputs), axis=1)
-                arg_data = np.concatenate((fp.xstar, fp.inputs), axis=1)
+                if self.inputs is None:
+                    self_data_nxd = self.xstar
+                    arg_data_nxd = fp.xstar
+                else:
+                    self_data_nxd = np.concatenate(
+                        (self.xstar, self.inputs), axis=1)
+                    arg_data_nxd = np.concatenate(
+                        (fp.xstar, fp.inputs), axis=1)
 
-                elementwise_abs_diff = np.abs(self_data - arg_data)
-                hits = np.all(elementwise_abs_diff <= self.tol_unique, axis=1)
+                norm_diffs_n = np.linalg.norm(
+                    self_data_nxd - arg_data_nxd, axis=1)
 
-                result = np.where(hits)[0]
+                result = np.where(norm_diffs_n <= self.tol_unique)[0]
 
         return result
 
-    def __contains__(self, xstar):
+    def __contains__(self, fp):
         '''Checks whether a specified fixed point is contained in the object.
 
         Args:
-            xstar: [n_states,] or [1, n_states] numpy array specifying the fixed
-            point of interest.
+            fp: A FixedPoints object containing exactly one fixed point.
 
         Returns:
-            bool indicating whether self.xstar contains any fixed point with a maximum elementwise difference from xstar that is less than tol_unique.
+            bool indicating whether any fixed point matches fp.
         '''
-        idx = self.find(xstar)
+
+        idx = self.find(fp)
 
         return idx.size > 0
 
