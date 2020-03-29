@@ -1357,7 +1357,8 @@ class FixedPointFinder(object):
     # In development: *********************************************************
     # *************************************************************************
 
-    def approximate_update(self, states, inputs, fps):
+    def approximate_update(self, states, inputs, fps,
+        do_compute_exact_update=True):
         ''' Computes approximate one-step updates based on linearized dynamics
         around fixed points. See _compute_approx_one_step_update() docstring
         for the underlying math.
@@ -1381,11 +1382,19 @@ class FixedPointFinder(object):
             fps: A FixedPoints object containing the (possible many) fixed
             points about which to compute linearized dynamics.
 
+            do_compute_exact_update (optional): Bool indicating whether to
+            compute the exact one-step updates via the RNN itself
+            (Default: True).
+
         Returns:
             approx_states: shape (k, n, n_states) numpy array containing the
             approximate one-step updated states. Here, k is the number of fixed
             points in fps, and n is the number of state-input pairs in states
             and inputs.
+
+            exact_states (optional): shape (n, n_states) numpy array containing
+            the exact one-step updates dates (i.e., using the full RNN). Only
+            returned if do_compute_exact_update is True.
         '''
 
         # This version, all computation done in numpy
@@ -1414,7 +1423,12 @@ class FixedPointFinder(object):
             approx_states[idx] = self._compute_approx_one_step_update(
                 states, inputs, A, xstar, B, u)
 
-        return approx_states
+        if not do_compute_exact_update:
+            return approx_states
+        else:
+            x, F = self._grab_RNN(states, inputs)
+            true_states = self.session.run(F, feed_dict=self.feed_dict)
+            return approx_states, true_states
 
     def _compute_approx_one_step_update(
         self, states, inputs, dFdx, xstar, dFdu, u):
