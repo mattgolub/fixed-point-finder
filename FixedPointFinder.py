@@ -1357,7 +1357,7 @@ class FixedPointFinder(object):
     # In development: *********************************************************
     # *************************************************************************
 
-    def approximate_update(self, states, inputs, fps,
+    def approximate_updates(self, states, inputs, fps,
         do_compute_exact_update=True):
         ''' Computes approximate one-step updates based on linearized dynamics
         around fixed points. See _compute_approx_one_step_update() docstring
