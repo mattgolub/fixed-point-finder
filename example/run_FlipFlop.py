@@ -83,8 +83,7 @@ inputs = np.zeros([1,n_bits])
 
 '''Draw random, noise corrupted samples of those state trajectories
 to use as initial states for the fixed point optimizations.'''
-example_predictions = ff.predict(example_trials,
-                                 do_predict_full_LSTM_state=is_lstm)
+example_predictions, example_summary = ff.predict(example_trials)
 initial_states = fpf.sample_states(example_predictions['state'],
                                    n_inits=N_INITS,
                                    noise_scale=NOISE_SCALE)

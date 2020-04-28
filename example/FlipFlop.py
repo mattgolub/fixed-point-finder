@@ -22,6 +22,7 @@ if os.environ.get('DISPLAY','') == '':
     matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from RecurrentWhisperer import RecurrentWhisperer
+import tf_utils
 
 class FlipFlop(RecurrentWhisperer):
     ''' Class for training an RNN to implement an N-bit memory, a.k.a. "the
@@ -170,8 +171,22 @@ class FlipFlop(RecurrentWhisperer):
                 '[vanilla, gru, lstm] but was %s' % hps.rnn_type)
 
         initial_state = self.rnn_cell.zero_state(n_batch, dtype=tf.float32)
-        self.hidden_bxtxd, _ = tf.nn.dynamic_rnn(self.rnn_cell,
-            self.inputs_bxtxd, initial_state=initial_state)
+
+        if hps.rnn_type == 'lstm':
+            self.state_bxtxd = tf_utils.unroll_LSTM(
+                self.rnn_cell,
+                inputs=self.inputs_bxtxd,
+                initial_state=initial_state)
+
+            self.hidden_bxtxd = self.state_bxtxd.h
+
+        else:
+            self.state_bxtxd, _ = tf.nn.dynamic_rnn(
+                self.rnn_cell,
+                inputs=self.inputs_bxtxd,
+                initial_state=initial_state)
+
+            self.hidden_bxtxd = self.state_bxtxd
 
         # Readout from RNN
         np_W_out, np_b_out = self._np_init_weight_matrix(n_hidden, n_output)
@@ -208,7 +223,9 @@ class FlipFlop(RecurrentWhisperer):
                 'loss': scalar float evalutaion of the loss function over the
                 data batch.
 
-                'grad_global_norm': scalar float evaluation of the norm of the gradient of the loss function with respect to all trainable variables, taken over the data batch.
+                'grad_global_norm': scalar float evaluation of the norm of the
+                gradient of the loss function with respect to all trainable
+                variables, taken over the data batch.
         '''
 
         ops_to_eval = [self.train_op,
@@ -248,17 +265,13 @@ class FlipFlop(RecurrentWhisperer):
 
         return summary
 
-    def predict(self, batch_data, do_predict_full_LSTM_state=False):
+    def _predict_batch(self, batch_data):
         '''Runs the RNN given its inputs.
 
         Args:
             batch_data:
                 dict containing the key 'inputs': [n_batch x n_time x n_bits]
                 numpy array specifying the inputs to the RNN.
-
-            do_predict_full_LSTM_state (optional): bool indicating, if the RNN
-            is an LSTM, whether to return the concatenated hidden and cell
-            states (True) or simply the hidden states (False). Default: False.
 
         Returns:
             predictions: dict containing the following key/value pairs:
@@ -275,85 +288,55 @@ class FlipFlop(RecurrentWhisperer):
 
         '''
 
-        if do_predict_full_LSTM_state:
-            return self._predict_with_LSTM_cell_states(batch_data)
-        else:
-            ops_to_eval = [self.hidden_bxtxd, self.pred_output_bxtxd]
-            feed_dict = {self.inputs_bxtxd: batch_data['inputs']}
-            ev_hidden_bxtxd, ev_pred_output_bxtxd = \
-                self.session.run(ops_to_eval, feed_dict=feed_dict)
+        ops_to_eval = {
+            'state': self.state_bxtxd,
+            'pred_output': self.pred_output_bxtxd,
+            'loss': self.loss}
 
-            predictions = {
-                'state': ev_hidden_bxtxd,
-                'output': ev_pred_output_bxtxd
-                }
-
-            return predictions
-
-    def _predict_with_LSTM_cell_states(self, batch_data):
-        '''Runs the RNN given its inputs.
-
-        The following is added for execution only when LSTM predictions are
-        needed for both the hidden and cell states. Tensorflow does not make
-        it easy to access the cell states via dynamic_rnn.
-
-        Args:
-            batch_data: as specified by predict.
-
-        Returns:
-            predictions: as specified by predict.
-
-        '''
-
-        hps = self.hps
-        if hps.rnn_type != 'lstm':
-            return self.predict(batch_data)
-
-        n_hidden = hps.n_hidden
-        [n_batch, n_time, n_bits] = batch_data['inputs'].shape
-        initial_state = self.rnn_cell.zero_state(n_batch, dtype=tf.float32)
-
-        ''' Add ops to the graph for getting the complete LSTM state
-        (i.e., hidden and cell) at every timestep.'''
-        self.full_state_list = []
-        for t in range(n_time):
-            input_ = self.inputs_bxtxd[:,t,:]
-            if t == 0:
-                full_state_t_minus_1 = initial_state
-            else:
-                full_state_t_minus_1 = self.full_state_list[-1]
-            _, full_state_bxd = self.rnn_cell(input_, full_state_t_minus_1)
-            self.full_state_list.append(full_state_bxd)
-
-        '''Evaluate those ops'''
-        ops_to_eval = [self.full_state_list, self.pred_output_bxtxd]
-        feed_dict = {self.inputs_bxtxd: batch_data['inputs']}
-        ev_full_state_list, ev_pred_output_bxtxd = \
-            self.session.run(ops_to_eval, feed_dict=feed_dict)
-
-        '''Package the results'''
-        h = np.zeros([n_batch, n_time, n_hidden]) # hidden states: bxtxd
-        c = np.zeros([n_batch, n_time, n_hidden]) # cell states: bxtxd
-        for t in range(n_time):
-            h[:,t,:] = ev_full_state_list[t].h
-            c[:,t,:] = ev_full_state_list[t].c
-
-        ev_LSTMCellState = tf.nn.rnn_cell.LSTMStateTuple(h=h, c=c)
-
-        predictions = {
-            'state': ev_LSTMCellState,
-            'output': ev_pred_output_bxtxd
+        feed_dict = {
+            self.inputs_bxtxd: batch_data['inputs'],
+            self.output_bxtxd: batch_data['output']
             }
 
-        return predictions
+        ev_ops = self.session.run(ops_to_eval, feed_dict=feed_dict)
+
+        predictions = {
+            'state': ev_ops['state'],
+            'output': ev_ops['pred_output']
+            }
+
+        summary = {'loss': ev_ops['loss']}
+
+        return predictions, summary
+
+    def _get_batch_size(self, batch_data):
+        '''See docstring in RecurrentWhisperer.'''
+        return batch_data['inputs'].shape[0]
 
     def _get_data_batches(self, train_data):
         '''See docstring in RecurrentWhisperer.'''
         return [self.generate_flipflop_trials()]
 
-    def _get_batch_size(self, batch_data):
+    def _split_data_into_batches(self, data):
         '''See docstring in RecurrentWhisperer.'''
-        return batch_data['inputs'].shape[0]
+
+        # Just use a single batch in this simple example.
+        return [data]
+
+    def _combine_prediction_batches(self, pred_list, summary_list):
+        '''See docstring in RecurrentWhisperer.'''
+
+        # Just use a single batch in this simple example.
+
+        assert (len(pred_list)==1),\
+            ('FlipFlop only supports single batches, but found %d batches.'
+             % len(pred_list))
+
+        assert (len(summary_list)==1),\
+            ('FlipFlop only supports single batches, but found %d batches.'
+             % len(summary_list))
+
+        return pred_list[0], summary_list[0]
 
     def generate_flipflop_trials(self):
         '''Generates synthetic data (i.e., ground truth trials) for the
@@ -454,7 +437,7 @@ class FlipFlop(RecurrentWhisperer):
 
         inputs = data['inputs']
         output = data['output']
-        predictions = self.predict(data)
+        predictions, summary = self.predict(data)
         pred_output = predictions['output']
 
         if stop_time is None:

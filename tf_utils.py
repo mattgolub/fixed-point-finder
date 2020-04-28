@@ -76,6 +76,53 @@ def convert_to_LSTMStateTuple(x):
 
     return tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
 
+def unroll_LSTM(lstm_cell, inputs, initial_state):
+    ''' Unroll an LSTM.
+
+    If only the hidden states (but not the cell states) are needed,
+    tf.static_rnn or tf.dynamic_rnn will do the trick. However, those don't
+    provide access to the LSTM cell state. This does.
+
+    Args:
+        lstm_cell: tf.nn.rnn_cell.LSTMCell object.
+
+        inputs: TF tensor with shape (# trials, # timesteps, # features).
+        Contains timestep-by-timestep inputs to the LSTM.
+
+        initial_state: LSTMStateTuple with .h and .c (hidden and cell states,
+        respectively) as TF tensors with shape (# trials, # units).
+
+    Returns:
+        LSTMStateTuple with .h and .c (hidden and cell states, respectively),
+        having shape (# trials, # timesteps, # units).
+    '''
+
+    assert (is_lstm(lstm_cell)),('lstm_cell is not an LSTM.')
+    assert (is_lstm(initial_state)),('initial_state is not an LSTMStateTuple.')
+
+    ''' Add ops to the graph for getting the complete LSTM state
+    (i.e., hidden and cell) at every timestep.'''
+    n_time = inputs.shape[1].value
+    hidden_list = []
+    cell_list = []
+
+    prev_state = initial_state
+
+    for t in range(n_time):
+
+        input_ = inputs[:,t,:]
+
+        _, state = lstm_cell(input_, prev_state)
+
+        hidden_list.append(state.h)
+        cell_list.append(state.c)
+        prev_state = state
+
+    c = tf.stack(cell_list, axis=1)
+    h = tf.stack(hidden_list, axis=1)
+
+    return tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
+
 def is_tf_object(x):
     '''Determine whether x is a Tensorflow object.
 
