@@ -181,7 +181,6 @@ class FixedPoints(object):
 
             self.eigval_J_xstar = self._alloc_nan((n, n_states))
             self.eigvec_J_xstar = self._alloc_nan((n, n_states, n_states))
-            self.has_decomposed_jacobians = False
 
         else:
             if xstar is not None:
@@ -213,7 +212,6 @@ class FixedPoints(object):
             self.J_xstar = J_xstar
             self.eigval_J_xstar = eigval_J_xstar
             self.eigvec_J_xstar = eigvec_J_xstar
-            self.has_decomposed_jacobians = eigval_J_xstar is not None
 
     def _alloc_nan(self, shape, dtype=None):
         '''Returns a nan-filled numpy array.
@@ -462,7 +460,13 @@ class FixedPoints(object):
             self.eigval_J_xstar[k] = e_vals_unsrt[k][sort_idx_k]
             self.eigvec_J_xstar[k] = e_vecs_unsrt[k][:, sort_idx_k]
 
-        self.has_decomposed_jacobians = True
+    @property
+    def has_decomposed_jacobians(self):
+
+        if not hasattr(self, 'eigval_J_xstar'):
+            return False
+
+        return self.eigval_J_xstar is not None
 
     def __setitem__(self, index, fps):
         '''Implements the assignment opperator.
