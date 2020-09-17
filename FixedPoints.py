@@ -133,6 +133,9 @@ class FixedPoints(object):
             dtype: Data type for representing all of the object's data.
             Default: numpy.float32.
 
+            color: [n x 3] numpy array with color[i] containing RGB values
+            for plotting fixed point xstar[i].
+
             verbose: Bool indicating whether to print status updates.
 
         Note:
@@ -182,6 +185,8 @@ class FixedPoints(object):
             self.eigval_J_xstar = self._alloc_nan((n, n_states))
             self.eigvec_J_xstar = self._alloc_nan((n, n_states, n_states))
 
+            self.color = self._alloc_nan(n, 3)
+
         else:
             if xstar is not None:
                 self.n, self.n_states = xstar.shape
@@ -212,6 +217,7 @@ class FixedPoints(object):
             self.J_xstar = J_xstar
             self.eigval_J_xstar = eigval_J_xstar
             self.eigvec_J_xstar = eigvec_J_xstar
+            self.color = color
 
     def _alloc_nan(self, shape, dtype=None):
         '''Returns a nan-filled numpy array.
@@ -469,7 +475,7 @@ class FixedPoints(object):
         return self.eigval_J_xstar is not None
 
     def __setitem__(self, index, fps):
-        '''Implements the assignment opperator.
+        '''Implements the assignment operator.
 
         All compatible data from fps are copied. This excludes tol_unique,
         dtype, n, n_states, and n_inputs, which retain their original values.
@@ -486,14 +492,14 @@ class FixedPoints(object):
             # Force the indexing that follows to preserve numpy array ndim
             index = range(index, index+1)
 
-        ''' Future work, test the following replacement for the rest of the
-        code in this function.
-
+        # This block added for testing 9/17/20 (replaces commented code below)
         for attr_name in self._data_attrs:
-            attr = getattr(self, attr_name)
-            if attr is not None:
-                attr[index] = getattr(fps, attr_name)
-        '''
+            if attr_name not in ['eigval_J_xstar', 'eigvec_J_xstar']:
+                attr = getattr(self, attr_name)
+                if attr is not None:
+                    attr[index] = getattr(fps, attr_name)
+
+        ''' Previous version of block above:
 
         if self.xstar is not None:
             self.xstar[index] = fps.xstar
@@ -515,6 +521,7 @@ class FixedPoints(object):
 
         if self.J_xstar is not None:
             self.J_xstar[index] = fps.J_xstar
+        '''
 
         if self.has_decomposed_jacobians:
             self.eigval_J_xstar[index] = fps.eigval_J_xstar
