@@ -344,7 +344,7 @@ class FixedPoints(object):
         '''
 
         assert len(fps_seq) > 0, 'Cannot concatenate empty list.'
-        FixedPoints._assert_matching_nonspecifics_attrs(fps_seq)
+        FixedPoints._assert_matching_nonspecific_attrs(fps_seq)
 
         kwargs = {}
 
@@ -361,12 +361,12 @@ class FixedPoints(object):
         return FixedPoints(**kwargs)
 
     @staticmethod
-    def _assert_matching_nonspecifics_attrs(fps_seq):
+    def _assert_matching_nonspecific_attrs(fps_seq):
 
         for attr_name in FixedPoints._nonspecific_attrs:
             items = [getattr(fps, attr_name) for fps in fps_seq]
             for item in items:
-                assert item is items[0],\
+                assert item == items[0],\
                     ('Cannot concatenate FixedPoints because of mismatched %s '
                      '(%s is not %s)' %
                      (attr_name, str(items[0]), str(item)))
@@ -389,7 +389,7 @@ class FixedPoints(object):
             FixedPoints objects (especially relevant for decomposed Jacobians).
         '''
 
-        self._assert_matching_nonspecifics_attrs(self, new_fps)
+        self._assert_matching_nonspecific_attrs(self, new_fps)
 
         for attr_name in self._data_attrs:
 
