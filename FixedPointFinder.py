@@ -370,7 +370,7 @@ class FixedPointFinder(object):
         else:
             return states
 
-    def find_fixed_points(self, initial_states, inputs):
+    def find_fixed_points(self, initial_states, inputs, colors=None):
         '''Finds RNN fixed points and the Jacobians at the fixed points.
 
         Args:
@@ -418,7 +418,7 @@ class FixedPointFinder(object):
                 initial_states, inputs_nxd, colors=colors)
         elif self.method == 'joint':
             all_fps = self._run_joint_optimization(
-                initial_states, inputs_nxd. colors=colors)
+                initial_states, inputs_nxd, colors=colors)
         else:
             raise ValueError('Unsupported optimization method. Must be either \
                 \'joint\' or \'sequential\', but was  \'%s\'' % self.method)
@@ -606,7 +606,7 @@ class FixedPointFinder(object):
             xstar=xstar,
             x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_states),
             inputs=inputs,
-            colors=colors,
+            color=colors,
             F_xstar=F_xstar,
             qstar=qstar,
             dq=dq,

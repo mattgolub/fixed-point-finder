@@ -21,9 +21,10 @@ class FixedPoints(object):
     A class for storing fixed points and associated data.
     '''
 
-    # List of class attributes
-    # All of these refer to Numpy arrays with axis 0 as the batch dimension.
-    # Thus, each is concatenatable using np.concatenate(..., axis=0).
+    ''' List of class attributes that represent data corresponding to fixed
+    points. All of these refer to Numpy arrays with axis 0 as the batch
+    dimension. Thus, each is concatenatable using np.concatenate(..., axis=0).
+    '''
     _data_attrs = [
             'xstar',
             'x_init',
@@ -34,11 +35,20 @@ class FixedPoints(object):
             'n_iters',
             'J_xstar',
             'eigval_J_xstar',
-            'eigvec_J_xstar'
+            'eigvec_J_xstar',
+            'color'
             ]
 
+    ''' List of class attributes that apply to all fixed points (i.e., these are not indexed per fixed point). '''
+    _nonspecific_attrs = [
+        'dtype',
+        'dtype_complex',
+        'tol_unique',
+        'verbose',
+        'do_alloc_nan']
+
     def __init__(self,
-                 xstar=None,
+                 xstar=None, # Fixed-point specific data
                  x_init=None,
                  inputs=None,
                  F_xstar=None,
@@ -48,12 +58,14 @@ class FixedPoints(object):
                  J_xstar=None,
                  eigval_J_xstar=None,
                  eigvec_J_xstar=None,
-                 do_alloc_nan=False,
+                 color=None,
                  n=None,
                  n_states=None,
-                 n_inputs=None,
+                 n_inputs=None, # Non-specific data
+                 do_alloc_nan=False,
                  tol_unique=1e-3,
                  dtype=np.float32,
+                 dtype_complex=np.complex64,
                  verbose=False):
         '''
         Initializes a FixedPoints object with all input arguments as class
@@ -154,8 +166,11 @@ class FixedPoints(object):
 
         '''
 
+        # These apply to all fixed points
+        # (one value each, rather than one value per fixed point).
         self.tol_unique = tol_unique
         self.dtype = dtype
+        self.dtype_complex = dtype_complex
         self.verbose = verbose
 
         if do_alloc_nan:
@@ -182,8 +197,10 @@ class FixedPoints(object):
             self.n_iters = self._alloc_nan((n))
             self.J_xstar = self._alloc_nan((n, n_states, n_states))
 
-            self.eigval_J_xstar = self._alloc_nan((n, n_states))
-            self.eigvec_J_xstar = self._alloc_nan((n, n_states, n_states))
+            self.eigval_J_xstar = self._alloc_nan(
+                (n, n_states), dtype=dtype_complex)
+            self.eigvec_J_xstar = self._alloc_nan(
+                (n, n_states, n_states), dtype=dtype_complex)
 
             self.color = self._alloc_nan(n, 3)
 
@@ -297,30 +314,18 @@ class FixedPoints(object):
         Returns:
             A FixedPoints object.
         '''
+        kwargs = self.kwargs
 
-        # These are all transformed
-        _xstar = np.matmul(self.xstar, U) + offset
-        _x_init = np.matmul(self.x_init, U) + offset
-        _F_xstar = np.matmul(self.F_xstar, U) + offset
-        _eigvec_J_xstar = np.matmul(U.T, self.eigvec_J_xstar) + offset
+        # These are all transformed. All others are not.
+        for attr_name in ['xstar', 'x_init', 'F_xstar']:
+            kwargs[attr_name] = np.matmul(getattr(self, attr_name), U) + offset
 
-        # These are unchanged
-        _inputs = self.inputs
-        _qstar = self.qstar
-        _dq = self.dq
-        _n_iters = self.n_iters
-        _eigval_J_xstar = self.eigval_J_xstar
+        if self.has_decomposed_jacobians:
+            kwargs['eigval_J_xstar'] = self.eigval_J_xstar
+            kwargs['eigvec_J_xstar'] = \
+                np.matmul(U.T, self.eigvec_J_xstar) + offset
 
-        transformed_fps = FixedPoints(
-            xstar=_xstar,
-            x_init=_x_init,
-            inputs=_inputs,
-            F_xstar=_F_xstar,
-            qstar=_qstar,
-            dq=_dq,
-            n_iters=_n_iters,
-            eigval_J_xstar=_eigval_J_xstar,
-            eigvec_J_xstar=_eigvec_J_xstar)
+        transformed_fps = FixedPoints(**kwargs)
 
         return transformed_fps
 
@@ -338,7 +343,15 @@ class FixedPoints(object):
             A FixedPoints objects containing the concatenated FixedPoints data.
         '''
 
+        assert len(fps_seq) > 0, 'Cannot concatenate empty list.'
+        FixedPoints._assert_matching_nonspecifics_attrs(fps_seq)
+
         kwargs = {}
+
+        for attr_name in FixedPoints._nonspecific_attrs:
+            kwargs[attr_name] = getattr(items[0], attr_name)
+
+
         for attr_name in FixedPoints._data_attrs:
             if all((hasattr(fps, attr_name) for fps in fps_seq)):
                 cat_list = [getattr(fps, attr_name) for fps in fps_seq]
@@ -347,12 +360,20 @@ class FixedPoints(object):
 
         return FixedPoints(**kwargs)
 
+    @staticmethod
+    def _assert_matching_nonspecifics_attrs(fps_seq):
+
+        for attr_name in FixedPoints._nonspecific_attrs:
+            items = [getattr(fps, attr_name) for fps in fps_seq]
+            for item in items:
+                assert item is items[0],\
+                    ('Cannot concatenate FixedPoints because of mismatched %s '
+                     '(%s is not %s)' %
+                     (attr_name, str(items[0]), str(item)))
+
     def update(self, new_fps):
         ''' Combines the entries from another FixedPoints object into this
         object.
-
-        All non-data class attributes remain as in this FixedPoints object
-        (e.g., tol_unique, dtype, verbose).
 
         Args:
             new_fps: a FixedPoints object containing the entries to be
@@ -362,21 +383,30 @@ class FixedPoints(object):
             None
 
         Raises:
-            ValueError if any data attributes are found in one but not both
+            AssertionError if the non-fixed-point specific attributes of new_fps do not match those of this FixedPoints object.
+
+            AssertionError if any data attributes are found in one but not both
             FixedPoints objects (especially relevant for decomposed Jacobians).
         '''
 
+        self._assert_matching_nonspecifics_attrs(self, new_fps)
+
         for attr_name in self._data_attrs:
+
             this_has = hasattr(self, attr_name)
             that_has = hasattr(new_fps, attr_name)
+
+            assert this_has == that_has,\
+                ('One but not both FixedPoints objects have %s. '
+                 'FixedPoints.update does not currently support this '
+                 'configuration.' % attr_name)
+
             if this_has and that_has:
                 cat_attr = np.concatenate(
                     (getattr(self, attr_name),
                     getattr(new_fps, attr_name)),
                     axis=0)
                 setattr(self, attr_name, cat_attr)
-            elif this_has != that_has:
-                raise ValueError('One but not both FixedPoints objects have %s. FixedPoints.update does not currently support this configuration.' % attr_name)
 
         self.n = self.n + new_fps.n
 
@@ -425,9 +455,9 @@ class FixedPoints(object):
                 # Set eigen-data to NaN if there are any NaNs in the
                 # corresponding Jacobian.
                 e_vals_unsrt = self._alloc_nan(
-                    (n, n_states), dtype=np.complex64)
+                    (n, n_states), dtype=self.dtype_complex)
                 e_vecs_unsrt = self._alloc_nan(
-                    (n, n_states, n_states), dtype=np.complex64)
+                    (n, n_states, n_states), dtype=dtype_complex)
 
                 e_vals_unsrt[valid_J_idx], e_vecs_unsrt[valid_J_idx] = \
                     np.linalg.eig(self.J_xstar[valid_J_idx])
@@ -457,9 +487,9 @@ class FixedPoints(object):
         # Apply the sort
         # There must be a faster way, but I'm too lazy to find it at the moment
         self.eigval_J_xstar = \
-            self._alloc_nan((n, n_states), dtype=np.complex64)
+            self._alloc_nan((n, n_states), dtype=self.dtype_complex)
         self.eigvec_J_xstar = \
-            self._alloc_nan((n, n_states, n_states), dtype=np.complex64)
+            self._alloc_nan((n, n_states, n_states), dtype=self.dtype_complex)
 
         for k in range(n):
             sort_idx_k = sort_idx[k]
@@ -492,9 +522,11 @@ class FixedPoints(object):
             # Force the indexing that follows to preserve numpy array ndim
             index = range(index, index+1)
 
+        manual_data_attrs = ['eigval_J_xstar', 'eigvec_J_xstar']
+
         # This block added for testing 9/17/20 (replaces commented code below)
         for attr_name in self._data_attrs:
-            if attr_name not in ['eigval_J_xstar', 'eigvec_J_xstar']:
+            if attr_name not in manual_data_attrs:
                 attr = getattr(self, attr_name)
                 if attr is not None:
                     attr[index] = getattr(fps, attr_name)
@@ -523,6 +555,8 @@ class FixedPoints(object):
             self.J_xstar[index] = fps.J_xstar
         '''
 
+        # This manual handling no longer seems necessary, but I'll save that
+        # change and testing for a rainy day.
         if self.has_decomposed_jacobians:
             self.eigval_J_xstar[index] = fps.eigval_J_xstar
             self.eigvec_J_xstar[index] = fps.eigvec_J_xstar
@@ -545,37 +579,24 @@ class FixedPoints(object):
             # Force the indexing that follows to preserve numpy array ndim
             index = range(index, index+1)
 
-        xstar = self._safe_index(self.xstar, index)
-        x_init = self._safe_index(self.x_init, index)
-        inputs = self._safe_index(self.inputs, index)
-        F_xstar = self._safe_index(self.F_xstar, index)
-        qstar = self._safe_index(self.qstar, index)
-        dq = self._safe_index(self.dq, index)
-        n_iters = self._safe_index(self.n_iters, index)
-        J_xstar = self._safe_index(self.J_xstar, index)
+        kwargs = self._nonspecific_kwargs
+        manual_data_attrs = ['eigval_J_xstar', 'eigvec_J_xstar']
 
-        if self.has_decomposed_jacobians:
-            eigval_J_xstar = self._safe_index(self.eigval_J_xstar, index)
-            eigvec_J_xstar = self._safe_index(self.eigvec_J_xstar, index)
-        else:
-            eigval_J_xstar = None
-            eigvec_J_xstar = None
+        for attr_name in self._data_attrs:
+            # This manual handling no longer seems necessary, but I'll save
+            # that change and testing for a rainy day.
+            if attr_name in manual_data_attrs:
+                if self.has_decomposed_jacobians:
+                    indexed_val = self._safe_index(self.eigval_J_xstar, index)
+                else:
+                    indexed_val = None
+            else:
+                attr_val = getattr(self, attr_name)
+                indexed_val = self._safe_index(attr_val, index)
 
-        dtype = self.dtype
-        tol_unique = self.tol_unique
+            kwargs[attr_name] = indexed_val
 
-        indexed_fps = FixedPoints(xstar,
-            x_init=x_init,
-            inputs=inputs,
-            F_xstar=F_xstar,
-            qstar=qstar,
-            dq=dq,
-            n_iters=n_iters,
-            J_xstar = J_xstar,
-            eigval_J_xstar=eigval_J_xstar,
-            eigvec_J_xstar=eigvec_J_xstar,
-            dtype=dtype,
-            tol_unique=tol_unique)
+        indexed_fps = FixedPoints(**kwargs)
 
         return indexed_fps
 
@@ -651,6 +672,30 @@ class FixedPoints(object):
         idx = self.find(fp)
 
         return idx.size > 0
+
+    @property
+    def kwargs(self):
+        ''' Returns dict of keyword arguments necessary for reinstantiating a
+        (shallow) copy of this FixedPoints object, i.e.,
+
+        fp_copy  = FixedPoints(**fp.kwargs)
+        '''
+
+        kwargs = self._nonspecific_kwargs
+
+        for attr_name in self._data_attrs:
+            kwargs[attr_name] = getattr(self, attr_name)
+
+        return kwargs
+
+    @property
+    def _nonspecific_kwargs(self):
+        # These are not specific to individual fixed points.
+        # Thus, simple copy, no indexing required
+        return {
+            'dtype': self.dtype,
+            'tol_unique': self.tol_unique
+            }
 
     def save(self, save_path):
         '''Saves all data contained in the FixedPoints object.
