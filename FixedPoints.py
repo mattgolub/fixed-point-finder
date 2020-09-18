@@ -171,6 +171,7 @@ class FixedPoints(object):
         self.tol_unique = tol_unique
         self.dtype = dtype
         self.dtype_complex = dtype_complex
+        self.do_alloc_nan = do_alloc_nan
         self.verbose = verbose
 
         if do_alloc_nan:
@@ -349,13 +350,18 @@ class FixedPoints(object):
         kwargs = {}
 
         for attr_name in FixedPoints._nonspecific_attrs:
-            kwargs[attr_name] = getattr(items[0], attr_name)
-
+            kwargs[attr_name] = getattr(fps_seq[0], attr_name)
 
         for attr_name in FixedPoints._data_attrs:
             if all((hasattr(fps, attr_name) for fps in fps_seq)):
+
                 cat_list = [getattr(fps, attr_name) for fps in fps_seq]
-                cat_attr = np.concatenate(cat_list, axis=0)
+
+                if all([l is None for l in cat_list]):
+                    cat_attr = None
+                else:
+                    cat_attr = np.concatenate(cat_list, axis=0)
+
                 kwargs[attr_name] = cat_attr
 
         return FixedPoints(**kwargs)
@@ -730,6 +736,10 @@ class FixedPoints(object):
         restore_data = file.read()
         file.close()
         self.__dict__ = cPickle.loads(restore_data)
+
+        # Hack to bridge between different versions of saved data
+        if not hasattr(self, 'do_alloc_nan'):
+            self.do_alloc_nan = False
 
     def print_summary(self):
         '''Prints a summary of the fixed points.
