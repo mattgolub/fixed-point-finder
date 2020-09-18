@@ -36,10 +36,10 @@ class FixedPoints(object):
             'J_xstar',
             'eigval_J_xstar',
             'eigvec_J_xstar',
-            'color'
-            ]
+            'color']
 
-    ''' List of class attributes that apply to all fixed points (i.e., these are not indexed per fixed point). '''
+    ''' List of class attributes that apply to all fixed points
+    (i.e., these are not indexed per fixed point). '''
     _nonspecific_attrs = [
         'dtype',
         'dtype_complex',
@@ -237,23 +237,119 @@ class FixedPoints(object):
             self.eigvec_J_xstar = eigvec_J_xstar
             self.color = color
 
-    def _alloc_nan(self, shape, dtype=None):
-        '''Returns a nan-filled numpy array.
+    def __setitem__(self, index, fps):
+        '''Implements the assignment operator.
+
+        All compatible data from fps are copied. This excludes tol_unique,
+        dtype, n, n_states, and n_inputs, which retain their original values.
+
+        Usage:
+            fps_to_be_partially_overwritten[index] = fps
+        '''
+
+        if not isinstance(fps, FixedPoints):
+            raise TypeError('fps must be a FixedPoints object but was %s.' %
+                type(fps))
+
+        if isinstance(index, int):
+            # Force the indexing that follows to preserve numpy array ndim
+            index = range(index, index+1)
+
+        manual_data_attrs = ['eigval_J_xstar', 'eigvec_J_xstar']
+
+        # This block added for testing 9/17/20 (replaces commented code below)
+        for attr_name in self._data_attrs:
+            if attr_name not in manual_data_attrs:
+                attr = getattr(self, attr_name)
+                if attr is not None:
+                    attr[index] = getattr(fps, attr_name)
+
+        ''' Previous version of block above:
+
+        if self.xstar is not None:
+            self.xstar[index] = fps.xstar
+
+        if self.x_init is not None:
+            self.x_init[index] = fps.x_init
+
+        if self.inputs is not None:
+            self.inputs[index] = fps.inputs
+
+        if self.F_xstar is not None:
+            self.F_xstar[index] = fps.F_xstar
+
+        if self.qstar is not None:
+            self.qstar[index] = fps.qstar
+
+        if self.dq is not None:
+            self.dq[index] = fps.dq
+
+        if self.J_xstar is not None:
+            self.J_xstar[index] = fps.J_xstar
+        '''
+
+        # This manual handling no longer seems necessary, but I'll save that
+        # change and testing for a rainy day.
+        if self.has_decomposed_jacobians:
+            self.eigval_J_xstar[index] = fps.eigval_J_xstar
+            self.eigvec_J_xstar[index] = fps.eigvec_J_xstar
+
+    def __getitem__(self, index):
+        '''Indexes into a subset of the fixed points and their associated data.
+
+        Usage:
+            fps_subset = fps[index]
 
         Args:
-            shape: int or tuple representing the shape of the desired numpy
-            array.
+            index: a slice object for indexing into the FixedPoints data.
 
         Returns:
-            numpy array with the desired shape, filled with NaNs.
-
+            A FixedPoints object containing a subset of the data from the
+            current FixedPoints object, as specified by index.
         '''
-        if dtype is None:
-            dtype = self.dtype
 
-        result = np.zeros(shape, dtype=dtype)
-        result.fill(np.nan)
-        return result
+        if isinstance(index, int):
+            # Force the indexing that follows to preserve numpy array ndim
+            index = range(index, index+1)
+
+        kwargs = self._nonspecific_kwargs
+        manual_data_attrs = ['eigval_J_xstar', 'eigvec_J_xstar']
+
+        for attr_name in self._data_attrs:
+            # This manual handling no longer seems necessary, but I'll save
+            # that change and testing for a rainy day.
+            if attr_name in manual_data_attrs:
+                if self.has_decomposed_jacobians:
+                    indexed_val = self._safe_index(self.eigval_J_xstar, index)
+                else:
+                    indexed_val = None
+            else:
+                attr_val = getattr(self, attr_name)
+                indexed_val = self._safe_index(attr_val, index)
+
+            kwargs[attr_name] = indexed_val
+
+        indexed_fps = FixedPoints(**kwargs)
+
+        return indexed_fps
+
+    def __len__(self):
+        '''Returns the number of fixed points stored in the object.'''
+        return self.n
+
+    def __contains__(self, fp):
+        '''Checks whether a specified fixed point is contained in the object.
+
+        Args:
+            fp: A FixedPoints object containing exactly one fixed point.
+
+        Returns:
+            bool indicating whether any fixed point matches fp.
+        '''
+
+        idx = self.find(fp)
+
+        return idx.size > 0
 
     def get_unique(self):
         '''Identifies unique fixed points. Among duplicates identified,
@@ -330,52 +426,42 @@ class FixedPoints(object):
 
         return transformed_fps
 
-    @staticmethod
-    def concatenate(fps_seq):
-        ''' Join a sequence of FixedPoints objects.
+    def find(self, fp):
+        '''Searches in the current FixedPoints object for matches to a
+        specified fixed point. Two fixed points are defined as matching
+        if the 2-norm of the difference between their concatenated (xstar,
+        inputs) is within tol_unique).
 
         Args:
-            fps_seq: sequence of FixedPoints objects. All FixedPoints objects must have the following attributes in common:
-                n_states
-                n_inputs
-                has_decomposed_jacobians
+            fp: A FixedPoints object containing exactly one fixed point.
 
         Returns:
-            A FixedPoints objects containing the concatenated FixedPoints data.
+            shape (n_matches,) numpy array specifying indices into the current
+            FixedPoints object where matches to fp were found.
         '''
 
-        assert len(fps_seq) > 0, 'Cannot concatenate empty list.'
-        FixedPoints._assert_matching_nonspecific_attrs(fps_seq)
+        # If not found or comparison is impossible (due to type or shape),
+        # follow convention of np.where and return an empty numpy array.
+        result = np.array([], dtype=int)
 
-        kwargs = {}
+        if isinstance(fp, FixedPoints):
+            if fp.n_states == self.n_states and fp.n_inputs == self.n_inputs:
 
-        for attr_name in FixedPoints._nonspecific_attrs:
-            kwargs[attr_name] = getattr(fps_seq[0], attr_name)
-
-        for attr_name in FixedPoints._data_attrs:
-            if all((hasattr(fps, attr_name) for fps in fps_seq)):
-
-                cat_list = [getattr(fps, attr_name) for fps in fps_seq]
-
-                if all([l is None for l in cat_list]):
-                    cat_attr = None
+                if self.inputs is None:
+                    self_data_nxd = self.xstar
+                    arg_data_nxd = fp.xstar
                 else:
-                    cat_attr = np.concatenate(cat_list, axis=0)
+                    self_data_nxd = np.concatenate(
+                        (self.xstar, self.inputs), axis=1)
+                    arg_data_nxd = np.concatenate(
+                        (fp.xstar, fp.inputs), axis=1)
 
-                kwargs[attr_name] = cat_attr
+                norm_diffs_n = np.linalg.norm(
+                    self_data_nxd - arg_data_nxd, axis=1)
 
-        return FixedPoints(**kwargs)
+                result = np.where(norm_diffs_n <= self.tol_unique)[0]
 
-    @staticmethod
-    def _assert_matching_nonspecific_attrs(fps_seq):
-
-        for attr_name in FixedPoints._nonspecific_attrs:
-            items = [getattr(fps, attr_name) for fps in fps_seq]
-            for item in items:
-                assert item == items[0],\
-                    ('Cannot concatenate FixedPoints because of mismatched %s '
-                     '(%s is not %s)' %
-                     (attr_name, str(items[0]), str(item)))
+        return result
 
     def update(self, new_fps):
         ''' Combines the entries from another FixedPoints object into this
@@ -502,207 +588,6 @@ class FixedPoints(object):
             self.eigval_J_xstar[k] = e_vals_unsrt[k][sort_idx_k]
             self.eigvec_J_xstar[k] = e_vecs_unsrt[k][:, sort_idx_k]
 
-    @property
-    def has_decomposed_jacobians(self):
-
-        if not hasattr(self, 'eigval_J_xstar'):
-            return False
-
-        return self.eigval_J_xstar is not None
-
-    def __setitem__(self, index, fps):
-        '''Implements the assignment operator.
-
-        All compatible data from fps are copied. This excludes tol_unique,
-        dtype, n, n_states, and n_inputs, which retain their original values.
-
-        Usage:
-            fps_to_be_partially_overwritten[index] = fps
-        '''
-
-        if not isinstance(fps, FixedPoints):
-            raise TypeError('fps must be a FixedPoints object but was %s.' %
-                type(fps))
-
-        if isinstance(index, int):
-            # Force the indexing that follows to preserve numpy array ndim
-            index = range(index, index+1)
-
-        manual_data_attrs = ['eigval_J_xstar', 'eigvec_J_xstar']
-
-        # This block added for testing 9/17/20 (replaces commented code below)
-        for attr_name in self._data_attrs:
-            if attr_name not in manual_data_attrs:
-                attr = getattr(self, attr_name)
-                if attr is not None:
-                    attr[index] = getattr(fps, attr_name)
-
-        ''' Previous version of block above:
-
-        if self.xstar is not None:
-            self.xstar[index] = fps.xstar
-
-        if self.x_init is not None:
-            self.x_init[index] = fps.x_init
-
-        if self.inputs is not None:
-            self.inputs[index] = fps.inputs
-
-        if self.F_xstar is not None:
-            self.F_xstar[index] = fps.F_xstar
-
-        if self.qstar is not None:
-            self.qstar[index] = fps.qstar
-
-        if self.dq is not None:
-            self.dq[index] = fps.dq
-
-        if self.J_xstar is not None:
-            self.J_xstar[index] = fps.J_xstar
-        '''
-
-        # This manual handling no longer seems necessary, but I'll save that
-        # change and testing for a rainy day.
-        if self.has_decomposed_jacobians:
-            self.eigval_J_xstar[index] = fps.eigval_J_xstar
-            self.eigvec_J_xstar[index] = fps.eigvec_J_xstar
-
-    def __getitem__(self, index):
-        '''Indexes into a subset of the fixed points and their associated data.
-
-        Usage:
-            fps_subset = fps[index]
-
-        Args:
-            index: a slice object for indexing into the FixedPoints data.
-
-        Returns:
-            A FixedPoints object containing a subset of the data from the
-            current FixedPoints object, as specified by index.
-        '''
-
-        if isinstance(index, int):
-            # Force the indexing that follows to preserve numpy array ndim
-            index = range(index, index+1)
-
-        kwargs = self._nonspecific_kwargs
-        manual_data_attrs = ['eigval_J_xstar', 'eigvec_J_xstar']
-
-        for attr_name in self._data_attrs:
-            # This manual handling no longer seems necessary, but I'll save
-            # that change and testing for a rainy day.
-            if attr_name in manual_data_attrs:
-                if self.has_decomposed_jacobians:
-                    indexed_val = self._safe_index(self.eigval_J_xstar, index)
-                else:
-                    indexed_val = None
-            else:
-                attr_val = getattr(self, attr_name)
-                indexed_val = self._safe_index(attr_val, index)
-
-            kwargs[attr_name] = indexed_val
-
-        indexed_fps = FixedPoints(**kwargs)
-
-        return indexed_fps
-
-    def __len__(self):
-        '''Returns the number of fixed points stored in the object.'''
-        return self.n
-
-    @staticmethod
-    def _safe_index(x, idx):
-        '''Safe method for indexing into a numpy array that might be None.
-
-        Args:
-            x: Either None or a numpy array.
-
-            idx: Positive int or index-compatible argument for indexing into x.
-
-        Returns:
-            Self explanatory.
-
-        '''
-        if x is None:
-            return None
-        else:
-            return x[idx]
-
-    def find(self, fp):
-        '''Searches in the current FixedPoints object for matches to a
-        specified fixed point. Two fixed points are defined as matching
-        if the 2-norm of the difference between their concatenated (xstar,
-        inputs) is within tol_unique).
-
-        Args:
-            fp: A FixedPoints object containing exactly one fixed point.
-
-        Returns:
-            shape (n_matches,) numpy array specifying indices into the current
-            FixedPoints object where matches to fp were found.
-        '''
-
-        # If not found or comparison is impossible (due to type or shape),
-        # follow convention of np.where and return an empty numpy array.
-        result = np.array([], dtype=int)
-
-        if isinstance(fp, FixedPoints):
-            if fp.n_states == self.n_states and fp.n_inputs == self.n_inputs:
-
-                if self.inputs is None:
-                    self_data_nxd = self.xstar
-                    arg_data_nxd = fp.xstar
-                else:
-                    self_data_nxd = np.concatenate(
-                        (self.xstar, self.inputs), axis=1)
-                    arg_data_nxd = np.concatenate(
-                        (fp.xstar, fp.inputs), axis=1)
-
-                norm_diffs_n = np.linalg.norm(
-                    self_data_nxd - arg_data_nxd, axis=1)
-
-                result = np.where(norm_diffs_n <= self.tol_unique)[0]
-
-        return result
-
-    def __contains__(self, fp):
-        '''Checks whether a specified fixed point is contained in the object.
-
-        Args:
-            fp: A FixedPoints object containing exactly one fixed point.
-
-        Returns:
-            bool indicating whether any fixed point matches fp.
-        '''
-
-        idx = self.find(fp)
-
-        return idx.size > 0
-
-    @property
-    def kwargs(self):
-        ''' Returns dict of keyword arguments necessary for reinstantiating a
-        (shallow) copy of this FixedPoints object, i.e.,
-
-        fp_copy  = FixedPoints(**fp.kwargs)
-        '''
-
-        kwargs = self._nonspecific_kwargs
-
-        for attr_name in self._data_attrs:
-            kwargs[attr_name] = getattr(self, attr_name)
-
-        return kwargs
-
-    @property
-    def _nonspecific_kwargs(self):
-        # These are not specific to individual fixed points.
-        # Thus, simple copy, no indexing required
-        return {
-            'dtype': self.dtype,
-            'tol_unique': self.tol_unique
-            }
-
     def save(self, save_path):
         '''Saves all data contained in the FixedPoints object.
 
@@ -785,3 +670,120 @@ class FixedPoints(object):
         for attr_name in FixedPoints._data_attrs:
             attr = getattr(self, attr_name)
             print('%s: %s' % (attr_name, str(attr.shape)))
+
+
+    @staticmethod
+    def concatenate(fps_seq):
+        ''' Join a sequence of FixedPoints objects.
+
+        Args:
+            fps_seq: sequence of FixedPoints objects. All FixedPoints objects must have the following attributes in common:
+                n_states
+                n_inputs
+                has_decomposed_jacobians
+
+        Returns:
+            A FixedPoints objects containing the concatenated FixedPoints data.
+        '''
+
+        assert len(fps_seq) > 0, 'Cannot concatenate empty list.'
+        FixedPoints._assert_matching_nonspecific_attrs(fps_seq)
+
+        kwargs = {}
+
+        for attr_name in FixedPoints._nonspecific_attrs:
+            kwargs[attr_name] = getattr(fps_seq[0], attr_name)
+
+        for attr_name in FixedPoints._data_attrs:
+            if all((hasattr(fps, attr_name) for fps in fps_seq)):
+
+                cat_list = [getattr(fps, attr_name) for fps in fps_seq]
+
+                if all([l is None for l in cat_list]):
+                    cat_attr = None
+                else:
+                    cat_attr = np.concatenate(cat_list, axis=0)
+
+                kwargs[attr_name] = cat_attr
+
+        return FixedPoints(**kwargs)
+
+    @property
+    def has_decomposed_jacobians(self):
+
+        if not hasattr(self, 'eigval_J_xstar'):
+            return False
+
+        return self.eigval_J_xstar is not None
+
+    @property
+    def kwargs(self):
+        ''' Returns dict of keyword arguments necessary for reinstantiating a
+        (shallow) copy of this FixedPoints object, i.e.,
+
+        fp_copy  = FixedPoints(**fp.kwargs)
+        '''
+
+        kwargs = self._nonspecific_kwargs
+
+        for attr_name in self._data_attrs:
+            kwargs[attr_name] = getattr(self, attr_name)
+
+        return kwargs
+
+    def _alloc_nan(self, shape, dtype=None):
+        '''Returns a nan-filled numpy array.
+
+        Args:
+            shape: int or tuple representing the shape of the desired numpy
+            array.
+
+        Returns:
+            numpy array with the desired shape, filled with NaNs.
+
+        '''
+        if dtype is None:
+            dtype = self.dtype
+
+        result = np.zeros(shape, dtype=dtype)
+        result.fill(np.nan)
+        return result
+
+    @staticmethod
+    def _assert_matching_nonspecific_attrs(fps_seq):
+
+        for attr_name in FixedPoints._nonspecific_attrs:
+            items = [getattr(fps, attr_name) for fps in fps_seq]
+            for item in items:
+                assert item == items[0],\
+                    ('Cannot concatenate FixedPoints because of mismatched %s '
+                     '(%s is not %s)' %
+                     (attr_name, str(items[0]), str(item)))
+
+    @staticmethod
+    def _safe_index(x, idx):
+        '''Safe method for indexing into a numpy array that might be None.
+
+        Args:
+            x: Either None or a numpy array.
+
+            idx: Positive int or index-compatible argument for indexing into x.
+
+        Returns:
+            Self explanatory.
+
+        '''
+        if x is None:
+            return None
+        else:
+            return x[idx]
+
+
+    @property
+    def _nonspecific_kwargs(self):
+        # These are not specific to individual fixed points.
+        # Thus, simple copy, no indexing required
+        return {
+            'dtype': self.dtype,
+            'tol_unique': self.tol_unique
+            }
