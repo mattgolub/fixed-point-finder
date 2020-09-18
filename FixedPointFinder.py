@@ -48,7 +48,7 @@ class FixedPointFinder(object):
         'verbose': True,
         'super_verbose': False,
         'n_iters_per_print_update': 100,
-        'alr_hps': {},
+        'alr_hps': {}, # Note: ALR's termination criteria not currently used.
         'agnc_hps': {},
         'adam_hps': {'epsilon': 0.01},
         }
@@ -186,7 +186,9 @@ class FixedPointFinder(object):
             alr_hps (optional): A dict containing hyperparameters governing
             an adaptive learning rate. Default: Set by AdaptiveLearningRate.
             See AdaptiveLearningRate.py for more information on these
-            hyperparameters and their default values.
+            hyperparameters and their default values. NOTE: although
+            AdaptiveLearningRate can manage termination criteria, this
+            functionality is not currently used by FixedPointFinder.
 
             agnc_hps (optional): A dict containing hyperparameters governing
             an adaptive gradient norm clipper. Default: Set by
@@ -370,7 +372,7 @@ class FixedPointFinder(object):
         else:
             return states
 
-    def find_fixed_points(self, initial_states, inputs, colors=None):
+    def find_fixed_points(self, initial_states, inputs, cond_ids=None):
         '''Finds RNN fixed points and the Jacobians at the fixed points.
 
         Args:
@@ -415,10 +417,10 @@ class FixedPointFinder(object):
 
         if self.method == 'sequential':
             all_fps = self._run_sequential_optimizations(
-                initial_states, inputs_nxd, colors=colors)
+                initial_states, inputs_nxd, cond_ids=cond_ids)
         elif self.method == 'joint':
             all_fps = self._run_joint_optimization(
-                initial_states, inputs_nxd, colors=colors)
+                initial_states, inputs_nxd, cond_ids=cond_ids)
         else:
             raise ValueError('Unsupported optimization method. Must be either \
                 \'joint\' or \'sequential\', but was  \'%s\'' % self.method)
@@ -569,7 +571,7 @@ class FixedPointFinder(object):
 
         return x, F
 
-    def _run_joint_optimization(self, initial_states, inputs, colors=None):
+    def _run_joint_optimization(self, initial_states, inputs, cond_ids=None):
         '''Finds multiple fixed points via a joint optimization over multiple
         state vectors.
 
@@ -606,7 +608,7 @@ class FixedPointFinder(object):
             xstar=xstar,
             x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_states),
             inputs=inputs,
-            color=colors,
+            cond_id=cond_ids,
             F_xstar=F_xstar,
             qstar=qstar,
             dq=dq,
@@ -617,7 +619,7 @@ class FixedPointFinder(object):
         return fps
 
     def _run_sequential_optimizations(self, initial_states, inputs,
-                                      colors=None,
+                                      cond_ids=None,
                                       q_prior=None):
         '''Finds fixed points sequentially, running an optimization from one
         initial state at a time.
@@ -667,10 +669,10 @@ class FixedPointFinder(object):
             initial_states_i = tf_utils.safe_index(initial_states, index)
             inputs_i = inputs[index]
 
-            if colors is None:
+            if cond_ids is None:
                 colors_i = None
             else:
-                colors_i = colors[index]
+                colors_i = cond_ids[index]
 
             if is_fresh_start:
                 self._print_if_verbose('\n\tInitialization %d of %d:' %
@@ -680,11 +682,11 @@ class FixedPointFinder(object):
                     (init_idx+1, n_inits, q_prior[init_idx]))
 
             fps[init_idx] = self._run_single_optimization(
-                initial_states_i, inputs_i, color=colors_i)
+                initial_states_i, inputs_i, cond_id=colors_i)
 
         return fps
 
-    def _run_single_optimization(self, initial_state, inputs, color=None):
+    def _run_single_optimization(self, initial_state, inputs, cond_id=None):
         '''Finds a single fixed point from a single initial state.
 
         Args:
@@ -713,7 +715,7 @@ class FixedPointFinder(object):
             xstar=xstar,
             x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_state),
             inputs=inputs,
-            color=color,
+            cond_id=cond_id,
             F_xstar=F_xstar,
             qstar=qstar,
             dq=dq,
@@ -1274,7 +1276,7 @@ class FixedPointFinder(object):
             inputs = outlier_fps.inputs
             initial_states = self._get_rnncell_compatible_states(
                 outlier_fps.xstar)
-            colors = outlier_fps.color
+            cond_ids = outlier_fps.cond_id
 
             if method == 'joint':
 
@@ -1284,7 +1286,7 @@ class FixedPointFinder(object):
 
                 updated_outlier_fps = self._run_joint_optimization(
                     initial_states, inputs,
-                    colors=colors)
+                    cond_ids=cond_ids)
 
             elif method == 'sequential':
 
@@ -1294,7 +1296,7 @@ class FixedPointFinder(object):
 
                 updated_outlier_fps = self._run_sequential_optimizations(
                     initial_states, inputs,
-                    colors=colors,
+                    cond_ids=cond_ids,
                     q_prior=outlier_fps.qstar)
 
             else:
