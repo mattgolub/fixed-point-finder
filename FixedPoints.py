@@ -752,6 +752,13 @@ class FixedPoints(object):
 
                 if all([l is None for l in cat_list]):
                     cat_attr = None
+                elif any([l is None for l in cat_list]):
+                    # E.g., attempting to concat cond_id when it exists for
+                    # some fps but not for others. Better handling of this
+                    # would be nice. And yes, this would catch the all above,
+                    # but I'm keeping these cases separate to facilitate an
+                    # eventual refinement.
+                    cat_attr = None
                 else:
                     cat_attr = np.concatenate(cat_list, axis=0)
 
