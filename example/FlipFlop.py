@@ -247,7 +247,7 @@ class FlipFlop(RecurrentWhisperer):
 
         if self.hps.do_save_tensorboard_summaries:
 
-            if self.epoch==0:
+            if self._epoch==0:
                 '''Hack to prevent throwing the vertical axis on the
                 Tensorboard figure for grad_norm_clip_val (grad_norm_clip val
                 is initialized to an enormous number to prevent clipping
