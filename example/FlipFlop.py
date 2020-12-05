@@ -190,8 +190,8 @@ class FlipFlop(RecurrentWhisperer):
 
         # Readout from RNN
         np_W_out, np_b_out = self._np_init_weight_matrix(n_hidden, n_output)
-        self.W_out = tf.Variable(np_W_out, dtype=tf.float32)
-        self.b_out = tf.Variable(np_b_out, dtype=tf.float32)
+        self.W_out = tf.Variable(np_W_out, dtype=tf.float32, name='W_out')
+        self.b_out = tf.Variable(np_b_out, dtype=tf.float32, name='b_out')
         self.pred_output_bxtxd = tf.tensordot(self.hidden_bxtxd,
             self.W_out, axes=1) + self.b_out
 
