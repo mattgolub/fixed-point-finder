@@ -296,13 +296,16 @@ class FlipFlop(RecurrentWhisperer):
 
         return summary
 
-    def _predict_batch(self, batch_data):
+    def _predict_batch(self, batch_data, train_or_valid_str=None):
         '''Runs the RNN given its inputs.
 
         Args:
             batch_data:
                 dict containing the key 'inputs': [n_batch x n_time x n_bits]
                 numpy array specifying the inputs to the RNN.
+
+            train_or_valid_str:
+                not used, but required in call signature by RecurrentWhisperer.
 
         Returns:
             predictions: dict containing the following key/value pairs:
@@ -427,10 +430,11 @@ class FlipFlop(RecurrentWhisperer):
 
         return {'inputs': inputs, 'output': output}
 
-    def update_visualizations(self,
-        train_data=None,
-        valid_data=None,
-        is_final=False):
+    def _update_visualizations(self,
+        data=None,
+        pred=None,
+        train_or_valid_str=None,
+        version=None):
         '''See docstring in RecurrentWhisperer.'''
 
         data = self.generate_flipflop_trials()

@@ -98,4 +98,8 @@ plot_fps(unique_fps, example_predictions['state'],
     plot_start_time=10)
 
 print('Entering debug mode to allow interaction with objects and figures.')
+print('You should see a figure with:')
+print('\tMany blue lines approximately outlining a cube')
+print('\tStable fixed points (black dots) at corners of the cube')
+print('\tUnstable fixed points (red lines or crosses) on edges, surfaces and center of the cube')
 pdb.set_trace()
