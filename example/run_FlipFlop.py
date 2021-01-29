@@ -43,12 +43,29 @@ hps = {
     }
 
 ff = FlipFlop(**hps)
-ff.train()
+train_data = ff.generate_data()
+valid_data = ff.generate_data()
+
+# There are a few different supported training modes using RecurrentWhisperer
+# 1. Generate on-the-fly training data (new data for each gradient step)
+# 2. Provide a single, fixed set of training data.
+# 3. Provide, single, fixed set of training data (as in 2) and a single, fixed
+#    set of validation data.
+# (see docstring to RecurrentWhisperer.train() for more detail)
+
+# Here is mode 1
+# ff.train()
+
+# Here is mode 2 (much faster at the expense of overfitting potential)
+# ff.train(train_data)
+
+# Here is mode 3 (requires some changes to hps to fully leverage validation)
+ff.train(train_data, valid_data)
 
 # Get example state trajectories from the network
 # Visualize inputs, outputs, and RNN predictions from example trials
-example_trials = ff.generate_flipflop_trials()
-ff.plot_trials(example_trials)
+valid_predictions, valid_summary = ff.predict(valid_data)
+ff.plot_trials(valid_data, valid_predictions)
 
 # ***************************************************************************
 # STEP 2: Find, analyze, and visualize the fixed points of the trained RNN **
@@ -83,8 +100,7 @@ inputs = np.zeros([1,n_bits])
 
 '''Draw random, noise corrupted samples of those state trajectories
 to use as initial states for the fixed point optimizations.'''
-example_predictions, example_summary = ff.predict(example_trials)
-initial_states = fpf.sample_states(example_predictions['state'],
+initial_states = fpf.sample_states(valid_predictions['state'],
                                    n_inits=N_INITS,
                                    noise_scale=NOISE_SCALE)
 
@@ -93,7 +109,7 @@ unique_fps, all_fps = fpf.find_fixed_points(initial_states, inputs)
 
 # Visualize identified fixed points with overlaid RNN state trajectories
 # All visualized in the 3D PCA space fit the the example RNN states.
-plot_fps(unique_fps, example_predictions['state'],
+plot_fps(unique_fps, valid_predictions['state'],
     plot_batch_idx=range(30),
     plot_start_time=10)
 

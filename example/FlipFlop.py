@@ -347,38 +347,13 @@ class FlipFlop(RecurrentWhisperer):
         '''See docstring in RecurrentWhisperer.'''
         return batch_data['inputs'].shape[0]
 
-    def _get_data_batches(self, train_data):
-        '''See docstring in RecurrentWhisperer.'''
-        return [self.generate_flipflop_trials()]
-
-    def _split_data_into_batches(self, data):
-        '''See docstring in RecurrentWhisperer.'''
-
-        # Just use a single batch in this simple example.
-        return [data]
-
-    def _combine_prediction_batches(self, pred_list, summary_list):
-        '''See docstring in RecurrentWhisperer.'''
-
-        # Just use a single batch in this simple example.
-
-        assert (len(pred_list)==1),\
-            ('FlipFlop only supports single batches, but found %d batches.'
-             % len(pred_list))
-
-        assert (len(summary_list)==1),\
-            ('FlipFlop only supports single batches, but found %d batches.'
-             % len(summary_list))
-
-        return pred_list[0], summary_list[0]
-
-    def generate_flipflop_trials(self):
+    def generate_data(self, train_or_valid_str=None):
         '''Generates synthetic data (i.e., ground truth trials) for the
         FlipFlop task. See comments following FlipFlop class definition for a
         description of the input-output relationship in the task.
 
         Args:
-            None.
+            None (RecurrentWhisperer option train_or_valid_str is ignored).
 
         Returns:
             dict containing 'inputs' and 'outputs'.
@@ -430,18 +405,36 @@ class FlipFlop(RecurrentWhisperer):
 
         return {'inputs': inputs, 'output': output}
 
-    def _update_visualizations(self,
-        data=None,
-        pred=None,
+    def _split_data_into_batches(self, data):
+        '''See docstring in RecurrentWhisperer.'''
+
+        # Just use a single batch in this simple example.
+        return [data], None
+
+    def _combine_prediction_batches(self, pred_list, summary_list):
+        '''See docstring in RecurrentWhisperer.'''
+
+        # Just use a single batch in this simple example.
+
+        assert (len(pred_list)==1),\
+            ('FlipFlop only supports single batches, but found %d batches.'
+             % len(pred_list))
+
+        assert (len(summary_list)==1),\
+            ('FlipFlop only supports single batches, but found %d batches.'
+             % len(summary_list))
+
+        return pred_list[0], summary_list[0]
+
+    def _update_visualizations(self, data, pred,
         train_or_valid_str=None,
         version=None):
         '''See docstring in RecurrentWhisperer.'''
 
-        data = self.generate_flipflop_trials()
-        self.plot_trials(data)
+        self.plot_trials(data, pred)
         self.refresh_figs()
 
-    def plot_trials(self, data, start_time=0, stop_time=None):
+    def plot_trials(self, data, pred, start_time=0, stop_time=None):
         '''Plots example trials, complete with input pulses, correct outputs,
         and RNN-predicted outputs.
 
@@ -472,8 +465,7 @@ class FlipFlop(RecurrentWhisperer):
 
         inputs = data['inputs']
         output = data['output']
-        predictions, summary = self.predict(data)
-        pred_output = predictions['output']
+        pred_output = pred['output']
 
         if stop_time is None:
             stop_time = n_time
