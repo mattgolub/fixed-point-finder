@@ -230,16 +230,12 @@ class FlipFlop(RecurrentWhisperer):
         b = np.zeros(output_size)
         return W, b
 
-    def _setup_training(self, train_data, valid_data):
-        '''Does nothing. Required by RecurrentWhisperer.'''
-        pass
-
-    def _train_batch(self, batch_data):
+    def _train_batch(self, train_data):
         '''Performs a training step over a single batch of data.
 
         Args:
-            batch_data: dict containing one training batch of data. Contains
-            the following key/value pairs:
+            train_data: dict containing one epoch of data. Contains the
+            following key/value pairs:
 
                 'inputs': [n_batch x n_time x n_bits] numpy array specifying
                 the inputs to the RNN.
@@ -248,10 +244,12 @@ class FlipFlop(RecurrentWhisperer):
                 the correct output responses to the 'inputs.'
 
         Returns:
+            predictions: None.
+
             summary: dict containing the following summary key/value pairs
             from the training step:
 
-                'loss': scalar float evalutaion of the loss function over the
+                'loss': scalar float evaluation of the loss function over the
                 data batch.
 
                 'grad_global_norm': scalar float evaluation of the norm of the
@@ -265,8 +263,8 @@ class FlipFlop(RecurrentWhisperer):
             self.tensorboard['merged_opt_summary']]
 
         feed_dict = dict()
-        feed_dict[self.inputs_bxtxd] = batch_data['inputs']
-        feed_dict[self.output_bxtxd] = batch_data['output']
+        feed_dict[self.inputs_bxtxd] = train_data['inputs']
+        feed_dict[self.output_bxtxd] = train_data['output']
         feed_dict[self.learning_rate] = self.adaptive_learning_rate()
         feed_dict[self.grad_norm_clip_val] = self.adaptive_grad_norm_clip()
 
@@ -292,9 +290,10 @@ class FlipFlop(RecurrentWhisperer):
             self.tensorboard['writer'].add_summary(
                 ev_merged_opt_summary, self._step)
 
+        predictions = None
         summary = {'loss': ev_loss, 'grad_global_norm': ev_grad_global_norm}
 
-        return summary
+        return predictions, summary
 
     def _predict_batch(self, batch_data, train_or_valid_str=None):
         '''Runs the RNN given its inputs.
@@ -411,7 +410,7 @@ class FlipFlop(RecurrentWhisperer):
         # Just use a single batch in this simple example.
         return [data], None
 
-    def _combine_prediction_batches(self, pred_list, summary_list):
+    def _combine_prediction_batches(self, pred_list, summary_list, idx_list):
         '''See docstring in RecurrentWhisperer.'''
 
         # Just use a single batch in this simple example.

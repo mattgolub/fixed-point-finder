@@ -34,6 +34,7 @@ hps = {
     'n_hidden': 16,
     'min_loss': 1e-4,
     'log_dir': './logs/',
+    'do_generate_pretraining_visualizations': True,
     'data_hps': {
         'n_batch': 512,
         'n_time': 64,
@@ -54,13 +55,13 @@ valid_data = ff.generate_data()
 # (see docstring to RecurrentWhisperer.train() for more detail)
 
 # Here is mode 1
-# ff.train()
+ff.train()
 
 # Here is mode 2 (much faster at the expense of overfitting potential)
 # ff.train(train_data)
 
 # Here is mode 3 (requires some changes to hps to fully leverage validation)
-ff.train(train_data, valid_data)
+# ff.train(train_data, valid_data)
 
 # Get example state trajectories from the network
 # Visualize inputs, outputs, and RNN predictions from example trials
