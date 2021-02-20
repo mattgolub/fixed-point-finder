@@ -57,7 +57,9 @@ class FixedPointFinder(object):
     def default_hps():
         ''' Returns a deep copy of the default hyperparameters dict.
 
-        The deep copy protects against external updates to the defaults, which in turn protects against unintended interactions with the hashing done by the Hyperparameters class.
+        The deep copy protects against external updates to the defaults, which
+        in turn protects against unintended interactions with the hashing done
+        by the Hyperparameters class.
 
         Args:
             None.

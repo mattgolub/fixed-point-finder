@@ -30,18 +30,18 @@ alr_hps = {'initial_rate': 1.0, 'min_rate': 1e-5}
 # Hyperparameters for FlipFlop
 # See FlipFlop.py for detailed descriptions.
 hps = {
-    'rnn_type': 'lstm',
-    'n_hidden': 16,
-    'min_loss': 1e-4,
-    'log_dir': './logs/',
-    'do_generate_pretraining_visualizations': True,
-    'data_hps': {
-        'n_batch': 512,
-        'n_time': 64,
-        'n_bits': 3,
-        'p_flip': 0.5},
-    'alr_hps': alr_hps
-    }
+        'rnn_type': 'lstm',
+        'n_hidden': 16,
+        'min_loss': 1e-4,
+        'log_dir': './logs/',
+        'do_generate_pretraining_visualizations': True,
+        'data_hps': {
+                'n_batch': 512,
+                'n_time': 64,
+                'n_bits': 3,
+                'p_flip': 0.5},
+        'alr_hps': alr_hps
+        }
 
 ff = FlipFlop(**hps)
 train_data = ff.generate_data()
@@ -92,9 +92,7 @@ descriptions of available hyperparameters.'''
 fpf_hps = {}
 
 # Setup the fixed point finder
-fpf = FixedPointFinder(ff.rnn_cell,
-                       ff.session,
-                       **fpf_hps)
+fpf = FixedPointFinder(ff.rnn_cell, ff.session, **fpf_hps)
 
 # Study the system in the absence of input pulses (e.g., all inputs are 0)
 inputs = np.zeros([1,n_bits])
@@ -102,8 +100,8 @@ inputs = np.zeros([1,n_bits])
 '''Draw random, noise corrupted samples of those state trajectories
 to use as initial states for the fixed point optimizations.'''
 initial_states = fpf.sample_states(valid_predictions['state'],
-                                   n_inits=N_INITS,
-                                   noise_scale=NOISE_SCALE)
+    n_inits=N_INITS,
+    noise_scale=NOISE_SCALE)
 
 # Run the fixed point finder
 unique_fps, all_fps = fpf.find_fixed_points(initial_states, inputs)

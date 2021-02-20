@@ -290,7 +290,7 @@ class FlipFlop(RecurrentWhisperer):
             self.tensorboard['writer'].add_summary(
                 ev_merged_opt_summary, self._step)
 
-        predictions = None
+        predictions = {}
         summary = {'loss': ev_loss, 'grad_global_norm': ev_grad_global_norm}
 
         return predictions, summary
