@@ -310,6 +310,12 @@ class FixedPointFinder(object):
         state_samples = self._add_gaussian_noise(
             state_samples, noise_scale)
 
+        assert not np.any(np.isnan(state_samples)),\
+            'Detected NaNs in sampled states. Check state_traj and valid_bxt.'
+
+        assert not np.any(np.isnan(input_samples)),\
+            'Detected NaNs in sampled inputs. Check inputs and valid_bxt.'
+
         if self.is_lstm:
             return input_samples, tf_utils.convert_to_LSTMStateTuple(states)
         else:
@@ -348,26 +354,28 @@ class FixedPointFinder(object):
         '''
 
         if self.is_lstm:
-            state_traj_bxtxd = \
-                tf_utils.convert_from_LSTMStateTuple(state_traj)
+            state_traj_bxtxd = tf_utils.convert_from_LSTMStateTuple(state_traj)
         else:
             state_traj_bxtxd = state_traj
 
         [n_batch, n_time, n_states] = state_traj_bxtxd.shape
 
         valid_bxt = self._get_valid_mask(n_batch, n_time, valid_bxt=valid_bxt)
-        trial_indices, time_indices = \
-            self._sample_trial_and_time_indices(valid_bxt, n_inits)
+        trial_indices, time_indices = self._sample_trial_and_time_indices(
+            valid_bxt, n_inits)
 
         # Draw random samples from state trajectories
         states = np.zeros([n_inits, n_states])
         for init_idx in range(n_inits):
             trial_idx = trial_indices[init_idx]
             time_idx = time_indices[init_idx]
-            states[init_idx,:] = state_traj_bxtxd[trial_idx,time_idx,:]
+            states[init_idx,:] = state_traj_bxtxd[trial_idx, time_idx]
 
         # Add IID Gaussian noise to the sampled states
         states = self._add_gaussian_noise(states, noise_scale)
+
+        assert not np.any(np.isnan(states)),\
+            'Detected NaNs in sampled states. Check state_traj and valid_bxt.'
 
         if self.is_lstm:
             return tf_utils.convert_to_LSTMStateTuple(states)
