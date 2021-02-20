@@ -704,7 +704,6 @@ class FixedPoints(object):
             attr = getattr(self, attr_name)
             print('%s: %s' % (attr_name, str(attr.shape)))
 
-
     def assert_valid_shapes(self):
         ''' Checks that all data attributes reflect the same number of fixed
         points.
@@ -839,7 +838,6 @@ class FixedPoints(object):
             return None
         else:
             return x[idx]
-
 
     @property
     def _nonspecific_kwargs(self):
