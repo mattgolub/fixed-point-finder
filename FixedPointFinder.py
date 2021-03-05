@@ -322,8 +322,8 @@ class FixedPointFinder(object):
             return input_samples, state_samples
 
     def sample_states(self, state_traj, n_inits,
-                      valid_bxt=None,
-                      noise_scale=0.0):
+        valid_bxt=None,
+        noise_scale=0.0):
         '''Draws random samples from trajectories of the RNN state. Samples
         can optionally be corrupted by independent and identically distributed
         (IID) Gaussian noise. These samples are intended to be used as initial
@@ -867,6 +867,7 @@ class FixedPointFinder(object):
         t_start = time.time()
         q_prev = np.tile(np.nan, q.shape.as_list())
         rnn_cell_feed_dict = self.feed_dict
+
         while True:
 
             iter_learning_rate = adaptive_learning_rate()

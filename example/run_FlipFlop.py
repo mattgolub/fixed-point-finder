@@ -24,9 +24,6 @@ from plot_utils import plot_fps
 # STEP 1: Train an RNN to solve the N-bit memory task ***********************
 # ***************************************************************************
 
-# Hyperparameters for AdaptiveLearningRate
-alr_hps = {'initial_rate': 1.0, 'min_rate': 1e-5}
-
 # Hyperparameters for FlipFlop
 # See FlipFlop.py for detailed descriptions.
 hps = {
@@ -35,12 +32,19 @@ hps = {
         'min_loss': 1e-4,
         'log_dir': './logs/',
         'do_generate_pretraining_visualizations': True,
+
         'data_hps': {
-                'n_batch': 512,
-                'n_time': 64,
-                'n_bits': 3,
-                'p_flip': 0.5},
-        'alr_hps': alr_hps
+            'n_batch': 512,
+            'n_time': 64,
+            'n_bits': 3,
+            'p_flip': 0.5
+            },
+
+        # Hyperparameters for AdaptiveLearningRate
+        'alr_hps': {
+            'initial_rate': 1.0,
+            'min_rate': 1e-5
+            }
         }
 
 ff = FlipFlop(**hps)
