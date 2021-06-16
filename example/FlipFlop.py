@@ -230,11 +230,11 @@ class FlipFlop(RecurrentWhisperer):
         b = np.zeros(output_size)
         return W, b
 
-    def _train_batch(self, train_data):
+    def _build_data_feed_dict(self, data):
         '''Performs a training step over a single batch of data.
 
         Args:
-            train_data: dict containing one epoch of data. Contains the
+            data: dict containing one epoch of data. Contains the
             following key/value pairs:
 
                 'inputs': [n_batch x n_time x n_bits] numpy array specifying
@@ -244,103 +244,21 @@ class FlipFlop(RecurrentWhisperer):
                 the correct output responses to the 'inputs.'
 
         Returns:
-            predictions: None.
-
-            summary: dict containing the following summary key/value pairs
-            from the training step:
-
-                'loss': scalar float evaluation of the loss function over the
-                data batch.
-
-                'grad_global_norm': scalar float evaluation of the norm of the
-                gradient of the loss function with respect to all trainable
-                variables, taken over the data batch.
+            dict with (TF placeholder, feed value) as (key, value) pairs.
         '''
-
-        ops_to_eval = [self.train_op,
-            self.grad_global_norm,
-            self.loss,
-            self.tensorboard['merged_opt_summary']]
-
         feed_dict = dict()
-        feed_dict[self.inputs_bxtxd] = train_data['inputs']
-        feed_dict[self.output_bxtxd] = train_data['output']
-        feed_dict[self.learning_rate] = self.adaptive_learning_rate()
-        feed_dict[self.grad_norm_clip_val] = self.adaptive_grad_norm_clip()
+        feed_dict[self.inputs_bxtxd] = data['inputs']
+        feed_dict[self.output_bxtxd] = data['output']
+        return feed_dict
 
-        [ev_train_op,
-         ev_grad_global_norm,
-         ev_loss,
-         ev_merged_opt_summary] = \
-                self.session.run(ops_to_eval, feed_dict=feed_dict)
-
-        if self.hps.do_save_tensorboard_summaries:
-
-            if self._epoch==0:
-                '''Hack to prevent throwing the vertical axis on the
-                Tensorboard figure for grad_norm_clip_val (grad_norm_clip val
-                is initialized to an enormous number to prevent clipping
-                before we know the scale of the gradients).'''
-                feed_dict[self.grad_norm_clip_val] = np.nan
-                ev_merged_opt_summary = \
-                    self.session.run(
-                        self.tensorboard['merged_opt_summary'],
-                        feed_dict)
-
-            self.tensorboard['writer'].add_summary(
-                ev_merged_opt_summary, self._step)
-
-        predictions = {}
-        summary = {'loss': ev_loss, 'grad_global_norm': ev_grad_global_norm}
-
-        return predictions, summary
-
-    def _predict_batch(self, batch_data, train_or_valid_str=None):
-        '''Runs the RNN given its inputs.
-
-        Args:
-            batch_data:
-                dict containing the key 'inputs': [n_batch x n_time x n_bits]
-                numpy array specifying the inputs to the RNN.
-
-            train_or_valid_str:
-                not used, but required in call signature by RecurrentWhisperer.
-
-        Returns:
-            predictions: dict containing the following key/value pairs:
-
-                'state': [n_batch x n_time x n_states] numpy array containing
-                the activations of the RNN units in response to the inputs.
-                Here, n_states is the dimensionality of the hidden state,
-                which, depending on the RNN architecture and
-                do_predict_full_LSTM_state, may or may not include LSTM cell
-                states.
-
-                'output': [n_batch x n_time x n_bits] numpy array containing
-                the readouts from the RNN.
-
+    def _get_pred_ops(self):
+        ''' See docstring in RecurrentWhisperer._get_pred_ops()
         '''
 
-        ops_to_eval = {
+        return {
             'state': self.state_bxtxd,
-            'pred_output': self.pred_output_bxtxd,
-            'loss': self.loss}
-
-        feed_dict = {
-            self.inputs_bxtxd: batch_data['inputs'],
-            self.output_bxtxd: batch_data['output']
+            'output': self.pred_output_bxtxd
             }
-
-        ev_ops = self.session.run(ops_to_eval, feed_dict=feed_dict)
-
-        predictions = {
-            'state': ev_ops['state'],
-            'output': ev_ops['pred_output']
-            }
-
-        summary = {'loss': ev_ops['loss']}
-
-        return predictions, summary
 
     def _get_batch_size(self, batch_data):
         '''See docstring in RecurrentWhisperer.'''
