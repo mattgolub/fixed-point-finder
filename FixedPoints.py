@@ -653,9 +653,22 @@ class FixedPoints(object):
         file.close()
         self.__dict__ = cPickle.loads(restore_data)
 
-        # Hack to bridge between different versions of saved data
+        # Hacks to bridge between different versions of saved data
         if not hasattr(self, 'do_alloc_nan'):
             self.do_alloc_nan = False
+
+        if not hasattr(self, 'eigval_J_xstar'):
+            n = self.n
+            n_states = self.n_states
+            dtype_complex = np.complex64
+            self.eigval_J_xstar = self._alloc_nan(
+                (n, n_states), dtype=dtype_complex)
+            self.eigvec_J_xstar = self._alloc_nan(
+                (n, n_states, n_states), dtype=dtype_complex)
+
+            self.is_stable = self._alloc_nan((n))
+
+            self.cond_id = self._alloc_nan((n))
 
         self.assert_valid_shapes()
 
