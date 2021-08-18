@@ -222,7 +222,7 @@ class FlipFlop(RecurrentWhisperer):
         b = np.zeros(output_size)
         return W, b
 
-    def _build_data_feed_dict(self, data, do_train_mode):
+    def _build_data_feed_dict(self, data, **kwargs):
         '''Performs a training step over a single batch of data.
 
         Args:
