@@ -5,10 +5,6 @@ Written using Python 2.7.12
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import pdb
 import sys
 import argparse
@@ -147,7 +143,7 @@ def find_fixed_points(model, valid_predictions):
     # Visualize identified fixed points with overlaid RNN state trajectories
     # All visualized in the 3D PCA space fit the the example RNN states.
     plot_fps(unique_fps, valid_predictions['state'],
-        plot_batch_idx=range(30),
+        plot_batch_idx=list(range(30)),
         plot_start_time=10)
 
     print('Entering debug mode to allow interaction with objects and figures.')

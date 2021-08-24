@@ -5,10 +5,6 @@ Written using Python 2.7.12
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
@@ -25,7 +21,7 @@ def build_test_rnn(n_hidden, n_inputs, session):
         n_inputs:
             Non-negative int specifying the number of inputs to the RNN.
             Inputs are ignored by these test RNN's, so this value can be set
-            arbitraily without affecting results. This is included only to
+            arbitrarily without affecting results. This is included only to
             ensure input dimensionality is consistent across the various objects used in a test.
 
         session:
@@ -80,7 +76,7 @@ def generate_initial_states_and_inputs(n_hidden, n_inputs,
         n_inputs:
             Non-negative int specifying the number of inputs to the RNN.
             Inputs are ignored by these test RNN's, so this value can be set
-            arbitraily without affecting results. This is included only to
+            arbitrarily without affecting results. This is included only to
             ensure input dimensionality is consistent across the various
             objects used in a test.
 

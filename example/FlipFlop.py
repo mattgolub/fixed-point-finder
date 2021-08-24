@@ -5,10 +5,6 @@ Written using Python 2.7.12
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import os
 import sys
 import tensorflow as tf
@@ -379,7 +375,7 @@ class FlipFlop(RecurrentWhisperer):
         if stop_time is None:
             stop_time = n_time
 
-        time_idx = range(start_time, stop_time)
+        time_idx = list(range(start_time, stop_time))
 
         for trial_idx in range(n_plot):
             ax = plt.subplot(n_plot, 1, trial_idx+1)
@@ -405,7 +401,7 @@ class FlipFlop(RecurrentWhisperer):
 
         VERTICAL_SPACING = 2.5
         [n_time, n_bits] = input_txd.shape
-        tt = range(n_time)
+        tt = list(range(n_time))
 
         y_ticks = [VERTICAL_SPACING*bit_idx for bit_idx in range(n_bits)]
         y_tick_labels = \
