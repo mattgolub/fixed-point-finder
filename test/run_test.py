@@ -23,7 +23,7 @@ set of RNN's where ground truth fixed points have been previously identified,
 numerically confirmed, and saved for comparison.
 '''
 
-raise Exception('run_test.py has not been updated for Python3.')
+raise NotImplementedError('run_test.py has not been updated for Python3.')
 
 N_HIDDEN_LIST = [2, 3, 4]
 N_INPUTS = 1
