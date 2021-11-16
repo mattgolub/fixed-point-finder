@@ -6,13 +6,9 @@ Written using Python 2.7.12 and TensorFlow 1.10.
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import pdb
 import numpy as np
-import cPickle
+import pickle
 
 from Timer import Timer
 
@@ -264,7 +260,7 @@ class FixedPoints(object):
 
         if isinstance(index, int):
             # Force the indexing that follows to preserve numpy array ndim
-            index = range(index, index+1)
+            index = list(range(index, index+1))
 
         manual_data_attrs = ['eigval_J_xstar', 'eigvec_J_xstar', 'is_stable']
 
@@ -322,7 +318,7 @@ class FixedPoints(object):
 
         if isinstance(index, int):
             # Force the indexing that follows to preserve numpy array ndim
-            index = range(index, index+1)
+            index = list(range(index, index+1))
 
         kwargs = self._nonspecific_kwargs
         manual_data_attrs = ['eigval_J_xstar', 'eigvec_J_xstar', 'is_stable']
@@ -631,8 +627,8 @@ class FixedPoints(object):
 
         self.assert_valid_shapes()
 
-        file = open(save_path,'w')
-        file.write(cPickle.dumps(self.__dict__))
+        file = open(save_path,'wb')
+        file.write(pickle.dumps(self.__dict__))
         file.close()
 
     def restore(self, restore_path):
@@ -648,10 +644,10 @@ class FixedPoints(object):
         '''
         if self.verbose:
             print('Restoring FixedPoints object.')
-        file = open(restore_path,'r')
+        file = open(restore_path,'rb')
         restore_data = file.read()
         file.close()
-        self.__dict__ = cPickle.loads(restore_data)
+        self.__dict__ = pickle.loads(restore_data)
 
         # Hacks to bridge between different versions of saved data
         if not hasattr(self, 'do_alloc_nan'):

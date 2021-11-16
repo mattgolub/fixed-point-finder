@@ -6,10 +6,6 @@ Written using Python 2.7.12 and TensorFlow 1.10.
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import numpy as np
 import pdb
 
@@ -103,7 +99,7 @@ def plot_fps(fps,
             # Ensure plot_stop_time <= n_time
             plot_stop_time = np.min([plot_stop_time, n_time])
 
-        plot_time_idx = range(plot_start_time, plot_stop_time)
+        plot_time_idx = list(range(plot_start_time, plot_stop_time))
 
     n_inits = fps.n
     n_states = fps.n_states
@@ -137,7 +133,7 @@ def plot_fps(fps,
 
     if state_traj is not None:
         if plot_batch_idx is None:
-            plot_batch_idx = range(n_batch)
+            plot_batch_idx = list(range(n_batch))
 
         for batch_idx in plot_batch_idx:
             x_idx = state_traj_bxtxd[batch_idx]

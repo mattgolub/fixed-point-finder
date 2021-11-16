@@ -5,9 +5,9 @@ Written using Python 2.7.12 and TensorFlow 1.10.
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+
+
+
 
 import numpy as np
 import time
@@ -853,7 +853,7 @@ class FixedPointFinder(object):
 
         optimizer = tf.train.AdamOptimizer(
             learning_rate=learning_rate, **self.adam_optimizer_hps)
-        train = optimizer.apply_gradients(zip(grads_to_apply, [x]))
+        train = optimizer.apply_gradients(list(zip(grads_to_apply, [x])))
 
         # Initialize x and AdamOptimizer's auxiliary variables
         # (very careful not to reinitialize RNN parameters)

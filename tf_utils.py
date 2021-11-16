@@ -6,9 +6,9 @@ Written using Python 2.7.12 and TensorFlow 1.10.
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
+
+
+
 
 import numpy as np
 import tensorflow as tf

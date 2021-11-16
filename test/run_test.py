@@ -6,10 +6,6 @@ Written using Python 2.7.12
 Please direct correspondence to mgolub@stanford.edu.
 '''
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
 import pdb
 import numpy as np
 import tensorflow as tf
@@ -26,6 +22,8 @@ from test_utils import get_ground_truth_path, build_test_rnn, generate_initial_s
 set of RNN's where ground truth fixed points have been previously identified,
 numerically confirmed, and saved for comparison.
 '''
+
+raise NotImplementedError('run_test.py has not been updated for Python3.')
 
 N_HIDDEN_LIST = [2, 3, 4]
 N_INPUTS = 1
