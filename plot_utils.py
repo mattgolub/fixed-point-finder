@@ -1,7 +1,7 @@
 '''
 plot_utils.py
 Supports FixedPointFinder
-Written using Python 2.7.12 and TensorFlow 1.10.
+Written for Python 3.6.9 and TensorFlow 1.14
 @ Matt Golub, October 2018.
 Please direct correspondence to mgolub@stanford.edu.
 '''
