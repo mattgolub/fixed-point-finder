@@ -2,7 +2,7 @@
 
 Finds and analyzes the fixed points of recurrent neural networks that have been built using Tensorflow. The approach follows that outlined in Sussillo and Barak (2013), "Opening the Black Box: Low-Dimensional Dynamics in High-Dimensional Recurrent Neural Networks", *Neural Computation*.
 
-Written using Python 2.7.12.
+Written for Python 3.6.9.
 
 
 **If you are using FixedPointFinder in research to be published, please cite our accompanying paper in your publication:**
@@ -15,9 +15,9 @@ Golub and Sussillo (2018), "FixedPointFinder: A Tensorflow toolbox for identifyi
 
 1. [Clone or download](https://help.github.com/articles/cloning-a-repository/) this repository.
 2. Create a virtual environment for the required dependencies:
-    To create a new virtual environment specific to Python 2.7, enter at the command line:
+    To create a new virtual environment specific to Python 3.6, enter at the command line:
     ```bash
-    $ virtualenv --system-site-packages -p python2.7 your-virtual-env-name
+    $ python3.6 -m venv --system-site-packages your-virtual-env-name
     ```
     where `your-virtual-env-name` is a path to the the virtual environment you would like to create (e.g.: `/home/fpf`). Then   activate your new virtual environment:
     ```bash
@@ -67,6 +67,8 @@ Advanced Python users and those wishing to develop [contributions](https://githu
 ## Testing the Package
 
 ``FixedPointFinder`` includes a test suite for confirming successful installation, and for ensuring that [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) have not introduced bugs into the main control flow. The tests run ``FixedPointFinder`` over a set of RNNs where ground truth fixed points have been previously identified, numerically confirmed, and saved for comparison.
+
+Note: Tests are not currently functional--they are temporarily down following the codebase update to Python3. That said, the rest of the codebase should be fully usable, including the 3-bit flip flop example. Stay tuned.
 
 To run the tests, descend into the test directory: `fixed-point-finder/test/` and execute:
 
