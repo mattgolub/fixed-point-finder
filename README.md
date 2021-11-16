@@ -15,9 +15,9 @@ Golub and Sussillo (2018), "FixedPointFinder: A Tensorflow toolbox for identifyi
 
 1. [Clone or download](https://help.github.com/articles/cloning-a-repository/) this repository.
 2. Create a virtual environment for the required dependencies:
-    To create a new virtual environment specific to Python 3.6, enter at the command line:
+    To create a new virtual environment specific, enter at the command line:
     ```bash
-    $ python3.6 -m venv --system-site-packages your-virtual-env-name
+    $ python3 -m venv --system-site-packages your-virtual-env-name
     ```
     where `your-virtual-env-name` is a path to the the virtual environment you would like to create (e.g.: `/home/fpf`). Then   activate your new virtual environment:
     ```bash
