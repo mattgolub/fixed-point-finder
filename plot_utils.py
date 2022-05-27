@@ -148,8 +148,6 @@ def plot_fps(fps,
         plot_fixed_point(
             ax,
             fps[init_idx],
-            # xstar[init_idx:(init_idx+1)],
-            # J_xstar[init_idx],
             pca,
             scale=mode_scale)
 

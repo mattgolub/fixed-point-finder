@@ -18,7 +18,6 @@ import numpy as np
 import time
 from copy import deepcopy
 import tensorflow as tf
-from tensorflow.python.ops import parallel_for as pfor
 import absl
 import pdb
 
@@ -219,7 +218,7 @@ class FixedPointFinder(object):
         self.rng = np.random.RandomState(random_seed)
 
         self.is_lstm = isinstance(
-            rnn_cell.state_size, tf.nn.rnn_cell.LSTMStateTuple)
+            rnn_cell.state_size, tf.compat.v1.nn.rnn_cell.LSTMStateTuple)
 
         # *********************************************************************
         # Optimization hyperparameters ****************************************
@@ -581,7 +580,7 @@ class FixedPointFinder(object):
         else:
             F = F_rnncell
 
-        init = tf.variables_initializer(var_list=[x])
+        init = tf.compat.v1.variables_initializer(var_list=[x])
         self.session.run(init)
 
         return x, F
@@ -614,7 +613,7 @@ class FixedPointFinder(object):
 
         # A shape [n,] TF Tensor of objectives (one per initial state) to be
         # combined in _run_optimization_loop.
-        q = 0.5 * tf.reduce_sum(tf.square(F - x), axis=1)
+        q = 0.5 * tf.reduce_sum(input_tensor=tf.square(F - x), axis=1)
 
         xstar, F_xstar, qstar, dq, n_iters = \
             self._run_optimization_loop(q, x, F)
@@ -721,7 +720,7 @@ class FixedPointFinder(object):
         '''
 
         x, F = self._grab_RNN(initial_state, inputs)
-        q = 0.5 * tf.reduce_sum(tf.square(F - x))
+        q = 0.5 * tf.reduce_sum(input_tensor=tf.square(F - x))
 
         xstar, F_xstar, qstar, dq, n_iters = \
             self._run_optimization_loop(q, x, F)
@@ -829,10 +828,10 @@ class FixedPointFinder(object):
         situations arising where the objective continues to improve due to
         improvements in some fixed points but not others.'''
 
-        q_scalar = tf.reduce_mean(q)
-        grads = tf.gradients(q_scalar, [x])
+        q_scalar = tf.reduce_mean(input_tensor=q)
+        grads = tf.gradients(ys=q_scalar, xs=[x])
 
-        q_prev_tf = tf.placeholder(self.tf_dtype,
+        q_prev_tf = tf.compat.v1.placeholder(self.tf_dtype,
                                    shape=q.shape.as_list(),
                                    name='q_prev')
 
@@ -842,28 +841,28 @@ class FixedPointFinder(object):
         # Optimizer
         adaptive_learning_rate = AdaptiveLearningRate(
             **self.adaptive_learning_rate_hps)
-        learning_rate = tf.placeholder(self.tf_dtype, name='learning_rate')
+        learning_rate = tf.compat.v1.placeholder(self.tf_dtype, name='learning_rate')
 
         adaptive_grad_norm_clip = AdaptiveGradNormClip(
             **self.grad_norm_clip_hps)
-        grad_norm_clip_val = tf.placeholder(self.tf_dtype,
+        grad_norm_clip_val = tf.compat.v1.placeholder(self.tf_dtype,
                                             name='grad_norm_clip_val')
 
         # Gradient clipping
         clipped_grads, grad_global_norm = tf.clip_by_global_norm(
             grads, grad_norm_clip_val)
-        clipped_grad_global_norm = tf.global_norm(clipped_grads)
+        clipped_grad_global_norm = tf.linalg.global_norm(clipped_grads)
         clipped_grad_norm_diff = grad_global_norm - clipped_grad_global_norm
         grads_to_apply = clipped_grads
 
-        optimizer = tf.train.AdamOptimizer(
+        optimizer = tf.compat.v1.train.AdamOptimizer(
             learning_rate=learning_rate, **self.adam_optimizer_hps)
         train = optimizer.apply_gradients(list(zip(grads_to_apply, [x])))
 
         # Initialize x and AdamOptimizer's auxiliary variables
         # (very careful not to reinitialize RNN parameters)
         uninitialized_vars = optimizer.variables()
-        init = tf.variables_initializer(var_list=uninitialized_vars)
+        init = tf.compat.v1.variables_initializer(var_list=uninitialized_vars)
         self.session.run(init)
 
         ops_to_eval = [train, x, F, q_scalar, q, dq, grad_global_norm]
@@ -950,13 +949,12 @@ class FixedPointFinder(object):
         else:
             states_np = fps.xstar
 
-        x_tf, F_tf = self._grab_RNN(states_np, inputs_np)
+        with tf.GradientTape(persistent=True) as tape:
+            
+            x_tf, F_tf = self._grab_RNN(states_np, inputs_np)
 
-        try:
-           J_tf = pfor.batch_jacobian(F_tf, x_tf)
-        except absl.flags._exceptions.UnparsedFlagAccessError:
-           J_tf = pfor.batch_jacobian(F_tf, x_tf, use_pfor=False)
-
+        J_tf = tape.batch_jacobian(F_tf, x_tf)
+            
         J_np = self.session.run(J_tf)
 
         return J_np, J_tf
@@ -993,7 +991,7 @@ class FixedPointFinder(object):
             else:
                 F = F_rnncell
 
-            init = tf.variables_initializer(var_list=[x, inputs_tf])
+            init = tf.compat.v1.variables_initializer(var_list=[x, inputs_tf])
             self.session.run(init)
 
             return inputs_tf, F
@@ -1005,12 +1003,11 @@ class FixedPointFinder(object):
         else:
             states_np = fps.xstar
 
-        inputs_tf, F_tf = grab_RNN_for_dFdu(states_np, inputs_np)
+        with tf.GradientTape(persistent=True) as tape:
 
-        try:
-           J_tf = pfor.batch_jacobian(F_tf, inputs_tf)
-        except absl.flags._exceptions.UnparsedFlagAccessError:
-           J_tf = pfor.batch_jacobian(F_tf, inputs_tf, use_pfor=False)
+            inputs_tf, F_tf = grab_RNN_for_dFdu(states_np, inputs_np)
+
+        J_tf = tape.batch_jacobian(F_tf, inputs_tf)
 
         J_np = self.session.run(J_tf)
 
@@ -1034,11 +1031,11 @@ class FixedPointFinder(object):
         '''
         if self.is_lstm:
             input_size = \
-                self.rnn_cell.variables[0].shape[0].value - \
+                self.rnn_cell.variables[0].shape[0] - \
                 self.rnn_cell.state_size[0]
         else:
             input_size = \
-                self.rnn_cell.variables[0].shape[0].value - \
+                self.rnn_cell.variables[0].shape[0] - \
                 self.rnn_cell.state_size
 
         return input_size
@@ -1575,7 +1572,7 @@ class FixedPointFinder(object):
         def decompose_J3(J_np):
             J_tf = tf.Variable(np.complex64(J_np))
 
-            init = tf.variables_initializer(var_list=[J_tf])
+            init = tf.compat.v1.variables_initializer(var_list=[J_tf])
             self.session.run(init)
 
             return decompose_J1(J_tf)

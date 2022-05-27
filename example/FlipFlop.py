@@ -10,7 +10,7 @@ import sys
 import tensorflow as tf
 import numpy as np
 
-if os.environ.get('DISPLAY','') == '':
+if False: # os.environ.get('DISPLAY','') == '':
     # Ensures smooth running across environments, including servers without
     # graphical backends.
     print('No display found. Using non-interactive Agg backend.')
@@ -142,18 +142,18 @@ class FlipFlop(RecurrentWhisperer):
         n_output = n_inputs
 
         # Data handling
-        self.inputs_bxtxd = tf.placeholder(tf.float32,
+        self.inputs_bxtxd = tf.compat.v1.placeholder(tf.float32,
             [n_batch, n_time, n_inputs])
-        self.output_bxtxd = tf.placeholder(tf.float32,
+        self.output_bxtxd = tf.compat.v1.placeholder(tf.float32,
             [n_batch, n_time, n_output])
 
         # RNN
         if hps.rnn_type == 'vanilla':
-            self.rnn_cell = tf.nn.rnn_cell.BasicRNNCell(n_hidden)
+            self.rnn_cell = tf.compat.v1.nn.rnn_cell.BasicRNNCell(n_hidden)
         elif hps.rnn_type == 'gru':
-            self.rnn_cell = tf.nn.rnn_cell.GRUCell(n_hidden)
+            self.rnn_cell = tf.compat.v1.nn.rnn_cell.GRUCell(n_hidden)
         elif hps.rnn_type == 'lstm':
-            self.rnn_cell = tf.nn.rnn_cell.LSTMCell(n_hidden)
+            self.rnn_cell = tf.compat.v1.nn.rnn_cell.LSTMCell(n_hidden)
         else:
             raise ValueError('Hyperparameter rnn_type must be one of '
                 '[vanilla, gru, lstm] but was %s' % hps.rnn_type)
@@ -169,7 +169,7 @@ class FlipFlop(RecurrentWhisperer):
             self.hidden_bxtxd = self.state_bxtxd.h
 
         else:
-            self.state_bxtxd, _ = tf.nn.dynamic_rnn(
+            self.state_bxtxd, _ = tf.compat.v1.nn.dynamic_rnn(
                 self.rnn_cell,
                 inputs=self.inputs_bxtxd,
                 initial_state=initial_state)
@@ -185,7 +185,7 @@ class FlipFlop(RecurrentWhisperer):
 
         # Loss
         self.loss = tf.reduce_mean(
-            tf.squared_difference(self.output_bxtxd, self.pred_output_bxtxd))
+            input_tensor=tf.math.squared_difference(self.output_bxtxd, self.pred_output_bxtxd))
 
     def _np_init_weight_matrix(self, input_size, output_size):
         '''Randomly initializes a weight matrix W and bias vector b.

@@ -68,6 +68,7 @@ def train_FlipFlop(train_mode):
             }
 
     model = FlipFlop(**hps)
+
     train_data = model.generate_data()
     valid_data = model.generate_data()
 
