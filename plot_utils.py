@@ -154,6 +154,8 @@ def plot_fps(fps,
     plt.ion()
     plt.show()
     plt.pause(1e-10)
+    
+    return fig
 
 def plot_fixed_point(ax, fp, pca,
 	scale=1.0,

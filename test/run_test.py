@@ -9,6 +9,7 @@ Please direct correspondence to mgolub@stanford.edu.
 import pdb
 import numpy as np
 import tensorflow as tf
+tf1 = tf.compat.v1
 import sys
 
 FIXED_POINT_FINDER_PATH = '../'
@@ -30,7 +31,7 @@ N_INPUTS = 1
 
 n_tests = len(N_HIDDEN_LIST)
 fpf_hps = {'do_rerun_q_outliers': True, 'verbose': False}
-session = tf.compat.v1.Session()
+session = tf1.Session()
 
 did_pass_tests1 = [False] * n_tests
 did_pass_tests2 = [False] * n_tests

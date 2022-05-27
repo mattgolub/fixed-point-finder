@@ -18,6 +18,7 @@ import numpy as np
 import time
 from copy import deepcopy
 import tensorflow as tf
+tf1 = tf.compat.v1
 import absl
 import pdb
 
@@ -218,7 +219,7 @@ class FixedPointFinder(object):
         self.rng = np.random.RandomState(random_seed)
 
         self.is_lstm = isinstance(
-            rnn_cell.state_size, tf.compat.v1.nn.rnn_cell.LSTMStateTuple)
+            rnn_cell.state_size, tf1.nn.rnn_cell.LSTMStateTuple)
 
         # *********************************************************************
         # Optimization hyperparameters ****************************************
@@ -580,7 +581,7 @@ class FixedPointFinder(object):
         else:
             F = F_rnncell
 
-        init = tf.compat.v1.variables_initializer(var_list=[x])
+        init = tf1.variables_initializer(var_list=[x])
         self.session.run(init)
 
         return x, F
@@ -831,7 +832,7 @@ class FixedPointFinder(object):
         q_scalar = tf.reduce_mean(input_tensor=q)
         grads = tf.gradients(ys=q_scalar, xs=[x])
 
-        q_prev_tf = tf.compat.v1.placeholder(self.tf_dtype,
+        q_prev_tf = tf1.placeholder(self.tf_dtype,
                                    shape=q.shape.as_list(),
                                    name='q_prev')
 
@@ -841,11 +842,11 @@ class FixedPointFinder(object):
         # Optimizer
         adaptive_learning_rate = AdaptiveLearningRate(
             **self.adaptive_learning_rate_hps)
-        learning_rate = tf.compat.v1.placeholder(self.tf_dtype, name='learning_rate')
+        learning_rate = tf1.placeholder(self.tf_dtype, name='learning_rate')
 
         adaptive_grad_norm_clip = AdaptiveGradNormClip(
             **self.grad_norm_clip_hps)
-        grad_norm_clip_val = tf.compat.v1.placeholder(self.tf_dtype,
+        grad_norm_clip_val = tf1.placeholder(self.tf_dtype,
                                             name='grad_norm_clip_val')
 
         # Gradient clipping
@@ -855,14 +856,14 @@ class FixedPointFinder(object):
         clipped_grad_norm_diff = grad_global_norm - clipped_grad_global_norm
         grads_to_apply = clipped_grads
 
-        optimizer = tf.compat.v1.train.AdamOptimizer(
+        optimizer = tf1.train.AdamOptimizer(
             learning_rate=learning_rate, **self.adam_optimizer_hps)
         train = optimizer.apply_gradients(list(zip(grads_to_apply, [x])))
 
         # Initialize x and AdamOptimizer's auxiliary variables
         # (very careful not to reinitialize RNN parameters)
         uninitialized_vars = optimizer.variables()
-        init = tf.compat.v1.variables_initializer(var_list=uninitialized_vars)
+        init = tf1.variables_initializer(var_list=uninitialized_vars)
         self.session.run(init)
 
         ops_to_eval = [train, x, F, q_scalar, q, dq, grad_global_norm]
@@ -991,7 +992,7 @@ class FixedPointFinder(object):
             else:
                 F = F_rnncell
 
-            init = tf.compat.v1.variables_initializer(var_list=[x, inputs_tf])
+            init = tf1.variables_initializer(var_list=[x, inputs_tf])
             self.session.run(init)
 
             return inputs_tf, F
@@ -1572,7 +1573,7 @@ class FixedPointFinder(object):
         def decompose_J3(J_np):
             J_tf = tf.Variable(np.complex64(J_np))
 
-            init = tf.compat.v1.variables_initializer(var_list=[J_tf])
+            init = tf1.variables_initializer(var_list=[J_tf])
             self.session.run(init)
 
             return decompose_J1(J_tf)

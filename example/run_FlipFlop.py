@@ -143,9 +143,11 @@ def find_fixed_points(model, valid_predictions):
 
     # Visualize identified fixed points with overlaid RNN state trajectories
     # All visualized in the 3D PCA space fit the the example RNN states.
-    plot_fps(unique_fps, valid_predictions['state'],
+    fig = plot_fps(unique_fps, valid_predictions['state'],
         plot_batch_idx=list(range(30)),
         plot_start_time=10)
+
+    model.save_visualizations(figs={'fixed_points': fig})
 
     print('Entering debug mode to allow interaction with objects and figures.')
     print('You should see a figure with:')

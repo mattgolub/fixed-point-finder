@@ -7,6 +7,7 @@ Please direct correspondence to mgolub@stanford.edu.
 
 import numpy as np
 import tensorflow as tf
+tf1 = tf.compat.v1
 import matplotlib.pyplot as plt
 
 def build_test_rnn(n_hidden, n_inputs, session):
@@ -27,7 +28,7 @@ def build_test_rnn(n_hidden, n_inputs, session):
         session:
             A Tensorflow session within which to initialize the RNNCell.
     '''
-    rnn_cell = tf.compat.v1.nn.rnn_cell.BasicRNNCell(n_hidden)
+    rnn_cell = tf1.nn.rnn_cell.BasicRNNCell(n_hidden)
     # rnn_cell = tf.nn.rnn_cell.GRUCell(n_hidden)
     # rnn_cell = tf.nn.rnn_cell.LSTMCell(n_hidden)
 
@@ -53,10 +54,10 @@ def build_test_rnn(n_hidden, n_inputs, session):
     output, final_state = rnn_cell(input_data, state)
     W_tf, b_tf = rnn_cell.variables
 
-    assign_W = tf.compat.v1.assign(W_tf, W_np)
-    assign_b = tf.compat.v1.assign(b_tf, b_np)
+    assign_W = tf1.assign(W_tf, W_np)
+    assign_b = tf1.assign(b_tf, b_np)
 
-    session.run(tf.compat.v1.global_variables_initializer())
+    session.run(tf1.global_variables_initializer())
     session.run([assign_W, assign_b])
 
     return rnn_cell
