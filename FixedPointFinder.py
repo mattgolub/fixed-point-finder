@@ -30,7 +30,6 @@ import tf_utils
 
 class FixedPointFinder(object):
 
-
     _default_hps = {
         'feed_dict': {},
         'tol_q': 1e-12,
@@ -856,8 +855,13 @@ class FixedPointFinder(object):
         clipped_grad_norm_diff = grad_global_norm - clipped_grad_global_norm
         grads_to_apply = clipped_grads
 
+        # Migrating to TF2 usage: tf.keras.optimizers.Adam
+        # Currently, updating to the TF2 usage fails when FPF is used in 
+        # conjunction with RecurrentWhisperer (RW), because TF2 doesn't allow 
+        # multiple Adam instances, and RW already instantiated one.
         optimizer = tf1.train.AdamOptimizer(
             learning_rate=learning_rate, **self.adam_optimizer_hps)
+
         train = optimizer.apply_gradients(list(zip(grads_to_apply, [x])))
 
         # Initialize x and AdamOptimizer's auxiliary variables

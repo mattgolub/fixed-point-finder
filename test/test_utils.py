@@ -54,8 +54,8 @@ def build_test_rnn(n_hidden, n_inputs, session):
     output, final_state = rnn_cell(input_data, state)
     W_tf, b_tf = rnn_cell.variables
 
-    assign_W = tf1.assign(W_tf, W_np)
-    assign_b = tf1.assign(b_tf, b_np)
+    assign_W = W_tf.assign(W_np)
+    assign_b = b_tf.assign(b_np)
 
     session.run(tf1.global_variables_initializer())
     session.run([assign_W, assign_b])

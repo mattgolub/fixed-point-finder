@@ -78,7 +78,7 @@ def train_FlipFlop(train_mode):
         # This runs much faster at the expense of overfitting potential
         model.train(train_data)
     elif train_mode == 3:
-        # This requires some changes to hps to fully leverage validation)
+        # This requires some changes to hps to fully leverage validation
         model.train(train_data, valid_data)
 
     # Get example state trajectories from the network
