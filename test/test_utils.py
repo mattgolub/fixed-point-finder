@@ -1,8 +1,8 @@
 '''
 test_utils.py
-Written for Python 3.6.9 and TensorFlow 1.14
-@ Matt Golub, October 2018.
-Please direct correspondence to mgolub@stanford.edu.
+Written for Python 3.6.9 and TensorFlow 2.8.0
+@ Matt Golub, October 2018
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import numpy as np
