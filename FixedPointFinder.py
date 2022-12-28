@@ -27,6 +27,8 @@ from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 from Timer import Timer
 import tf_utils
+import torch
+
 
 class FixedPointFinder(object):
 
@@ -218,9 +220,11 @@ class FixedPointFinder(object):
         self.random_seed = random_seed
         self.rng = np.random.RandomState(random_seed)
 
-        self.is_lstm = isinstance(
-            rnn_cell.state_size, tf.nn.rnn_cell.LSTMStateTuple)
-
+        if hasattr(rnn_cell, 'state_size'):
+            self.is_lstm = isinstance(
+                rnn_cell.state_size, tf.nn.rnn_cell.LSTMStateTuple)
+        else:
+            self.is_lstm = False
         # *********************************************************************
         # Optimization hyperparameters ****************************************
         # *********************************************************************
@@ -320,7 +324,7 @@ class FixedPointFinder(object):
 
         assert not np.any(np.isnan(input_samples)),\
             'Detected NaNs in sampled inputs. Check inputs and valid_bxt.'
-
+        
         if self.is_lstm:
             return input_samples, tf_utils.convert_to_LSTMStateTuple(states)
         else:
@@ -378,7 +382,6 @@ class FixedPointFinder(object):
 
         # Add IID Gaussian noise to the sampled states
         states = self._add_gaussian_noise(states, noise_scale)
-
         assert not np.any(np.isnan(states)),\
             'Detected NaNs in sampled states. Check state_traj and valid_bxt.'
 
@@ -421,7 +424,7 @@ class FixedPointFinder(object):
 
         self._print_if_verbose('\nSearching for fixed points '
                                'from %d initial states.\n' % n)
-
+        
         if inputs.shape[0] == 1:
             inputs_nxd = np.tile(inputs, [n, 1]) # safe, even if n == 1.
         elif inputs.shape[0] == n:
@@ -471,7 +474,6 @@ class FixedPointFinder(object):
 
         if self.do_compute_jacobians:
             if unique_fps.n > 0:
-
                 self._print_if_verbose('\tComputing recurrent Jacobian at %d '
                     'unique fixed points.' % unique_fps.n)
                 dFdx, dFdx_tf = self._compute_recurrent_jacobians(unique_fps)
@@ -492,7 +494,6 @@ class FixedPointFinder(object):
 
                 unique_fps.J_xstar = unique_fps._alloc_nan(shape_dFdx)
                 unique_fps.dFdu = unique_fps._alloc_nan(shape_dFdu)
-
             if self.do_decompose_jacobians:
                 # self._test_decompose_jacobians(unique_fps, J_np, J_tf)
                 unique_fps.decompose_jacobians(str_prefix='\t')
@@ -609,9 +610,8 @@ class FixedPointFinder(object):
                                'via joint optimization.')
 
         n, _ = tf_utils.safe_shape(initial_states)
-
         x, F = self._grab_RNN(initial_states, inputs)
-
+        
         # A shape [n,] TF Tensor of objectives (one per initial state) to be
         # combined in _run_optimization_loop.
         q = 0.5 * tf.reduce_sum(tf.square(F - x), axis=1)
@@ -890,6 +890,14 @@ class FixedPointFinder(object):
             ev_q,
             ev_dq,
             ev_grad_norm) = self.session.run(ops_to_eval, feed_dict)
+
+            # if iter_count % 50 == 0:
+            #     import matplotlib.pyplot as plt
+            #     fig = plt.figure()
+            #     plt.imshow(ev_x, aspect='auto')
+            #     plt.colorbar()
+            #     plt.savefig(f'../tf_hidden_states/hidden_state_{iter_count}.png')
+            #     plt.close(fig)
 
             if self.super_verbose and \
                 np.mod(iter_count, self.n_iters_per_print_update)==0:
@@ -1621,3 +1629,311 @@ class FixedPointFinder(object):
         np_vs_tf = np.mean(np.abs(unique_fps.eigval_J_xstar[:,0] - e3[:,-1]))
 
         pdb.set_trace()
+
+
+class TorchFixedPointFinder(FixedPointFinder):
+
+    def __init__(self,rnn, **kwargs):
+        super().__init__(rnn, None, **kwargs)
+
+    @staticmethod
+    def compute_q(x, x_1):
+        return  (0.5 * torch.sum(torch.square(x_1 - x), axis=2)).squeeze(0)
+
+    @staticmethod
+    def compute_q_scalar(x, x_1):
+        return  torch.mean(0.5 * torch.sum(torch.square(x_1 - x), axis=2))#.unsqueeze(-1)
+
+
+    def _run_optimization_loop(self, q, x, F_x, inputs, rnn):        
+        x.requires_grad = True
+        optimizer = torch.optim.Adam([x], lr=0.05)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.7)
+
+        # q = self.compute_q(x,F_x)
+        q_prev = torch.zeros(size=[x.shape[1]])
+        q_scalar = 10000
+        iter_count = 0
+        x_traj = []
+        x_traj.append(x.clone())
+
+        # TODO: remove this , just ensures RNN params are frozen
+        # optimizer.param_groups[0]['params'][0].shape
+        rnn.eval()
+        # self.tol_q = 5e-14
+        while True and iter_count < 2000:
+            optimizer.zero_grad()
+            _, F_x = rnn(inputs,x)
+            q = self.compute_q(x,F_x)
+            dq = torch.abs(q - q_prev)
+            q_scalar = self.compute_q_scalar(x,F_x)#torch.mean(q)
+            q_scalar.backward()
+            
+            optimizer.step()
+            scheduler.step()
+        
+            # shows that RNN weights aren't updating
+            # print(torch.mean(rnn.weight_hh_l0), torch.mean(rnn.weight_ih_l0))
+            print("q scalar : ", q_scalar.item(), " iter: ", iter_count)
+
+            if iter_count > 1 and np.all(np.logical_or( dq.detach().numpy() < self.tol_dq,q.detach().numpy() < self.tol_q)): # TODO: add learning rate scale
+                break
+            else: # update q, x
+                x_traj.append(x.clone())
+                q_prev = q.clone()
+                iter_count += 1
+        # remove extra dims
+        xstar, F_xstar, qstar, dq, n_iters, x_traj = x.squeeze(0), F_x.squeeze(0), q, dq, iter_count, torch.vstack(x_traj)
+        n_iters = np.tile(n_iters, reps=F_xstar.shape[0])
+        xstar, F_xstar, qstar = xstar.detach().numpy(), F_xstar.detach().numpy(), qstar.detach().numpy()
+        return xstar, F_xstar, qstar, dq, n_iters, x_traj
+    
+    def _run_joint_optimization(self, initial_states, inputs, cond_ids=None):
+        '''Finds multiple fixed points via a joint optimization over multiple
+        state vectors.
+
+        Args:
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: A [n x n_inputs] numpy array specifying a set of constant
+            inputs into the RNN.
+
+        Returns:
+            fps: A FixedPoints object containing the optimized fixed points
+            and associated metadata.
+        '''
+        self._print_if_verbose('\tFinding fixed points '
+                            'via joint optimization.')
+
+        x = torch.from_numpy(initial_states).unsqueeze(0).to(torch.float32)
+        F_x = torch.zeros(size=x.shape)
+        q = self.compute_q(x,F_x)
+
+        # A shape [n,] TF Tensor of objectives (one per initial state) to be
+        # combined in _run_optimization_loop.
+        xstar, F_xstar, qstar, dq, n_iters, x_traj  = \
+            self._run_optimization_loop(q,x, F_x, inputs, self.rnn_cell)
+        
+        # TODO: input shape problem removes sequence dim from inputs 
+        if  len(inputs.shape) > 2:
+            inputs = inputs[:,0,:]
+
+        fps = FixedPoints(
+            xstar=xstar,
+            # x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_states),
+            inputs=inputs,
+            cond_id=cond_ids,
+            F_xstar=F_xstar,
+            qstar=qstar,
+            dq=dq,
+            n_iters=n_iters,
+            tol_unique=self.tol_unique,
+            dtype=self.np_dtype)
+
+        return fps
+
+    def find_fixed_points(self, initial_states, inputs, cond_ids=None):
+        '''Finds RNN fixed points and the Jacobians at the fixed points.
+
+        Args:
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: Either a [1 x n_inputs] numpy array specifying a set of
+            constant inputs into the RNN to be used for all optimization
+            initializations, or an [n x n_inputs] numpy array specifying
+            potentially different inputs for each initialization.
+
+        Returns:
+            unique_fps: A FixedPoints object containing the set of unique
+            fixed points after optimizing from all initial_states. Two fixed
+            points are considered unique if all absolute element-wise
+            differences are less than tol_unique AND the corresponding inputs
+            are unique following the same criteria. See FixedPoints.py for
+            additional detail.
+
+            all_fps: A FixedPoints object containing the likely redundant set
+            of fixed points (and associated metadata) resulting from ALL
+            initializations in initial_states (i.e., the full set of fixed
+            points before filtering out putative duplicates to yield
+            unique_fps).
+        '''
+        n = initial_states.shape[0]
+
+        self._print_if_verbose('\nSearching for fixed points '
+                            'from %d initial states.\n' % n)
+        
+        if inputs.shape[0] == 1:
+            inputs_nxd = np.tile(inputs, [n, 1]) # safe, even if n == 1.
+        elif inputs.shape[0] == n:
+            inputs_nxd = inputs
+        else:
+            raise ValueError('Incompatible inputs shape: %s.' %
+                str(inputs.shape))
+
+        if self.method == 'sequential':
+            all_fps = self._run_sequential_optimizations(
+                initial_states, inputs_nxd, cond_ids=cond_ids)
+        elif self.method == 'joint':
+            all_fps = self._run_joint_optimization(
+                initial_states, inputs_nxd, cond_ids=cond_ids)
+        else:
+            raise ValueError('Unsupported optimization method. Must be either \
+                \'joint\' or \'sequential\', but was  \'%s\'' % self.method)
+
+        # Filter out duplicates after from the first optimization round
+        unique_fps = all_fps.get_unique()
+
+        self._print_if_verbose('\tIdentified %d unique fixed points.' %
+            unique_fps.n)
+
+        if self.do_exclude_distance_outliers:
+            unique_fps = \
+                self._exclude_distance_outliers(unique_fps, initial_states)
+
+        # Optionally run additional optimization iterations on identified
+        # fixed points with q values on the large side of the q-distribution.
+        if self.do_rerun_q_outliers:
+            unique_fps = \
+                self._run_additional_iterations_on_outliers(unique_fps)
+
+            # Filter out duplicates after from the second optimization round
+            unique_fps = unique_fps.get_unique()
+
+        # Optionally subselect from the unique fixed points (e.g., for
+        # computational savings when not all are needed.)
+        if unique_fps.n > self.max_n_unique:
+            self._print_if_verbose('\tRandomly selecting %d unique '
+                'fixed points to keep.' % self.max_n_unique)
+            max_n_unique = int(self.max_n_unique)
+            idx_keep = self.rng.choice(
+                unique_fps.n, max_n_unique, replace=False)
+            unique_fps = unique_fps[idx_keep]
+
+        if self.do_compute_jacobians:
+            if unique_fps.n > 0:
+
+                self._print_if_verbose('\tComputing recurrent Jacobian at %d '
+                    'unique fixed points.' % unique_fps.n)
+                dFdx = self._compute_recurrent_jacobians(unique_fps)
+                unique_fps.J_xstar = dFdx
+                self._print_if_verbose('\tComputing input Jacobian at %d '
+                    'unique fixed points.' % unique_fps.n)
+                dFdu  = self._compute_input_jacobians(unique_fps)
+                unique_fps.dFdu = dFdu
+
+            else:
+                # Allocate empty arrays, needed for robust concatenation
+                n_states = unique_fps.n_states
+                n_inputs = unique_fps.n_inputs
+
+                shape_dFdx = (0, n_states, n_states)
+                shape_dFdu = (0, n_states, n_inputs)
+
+                unique_fps.J_xstar = unique_fps._alloc_nan(shape_dFdx)
+                unique_fps.dFdu = unique_fps._alloc_nan(shape_dFdu)
+
+            if self.do_decompose_jacobians:
+                # self._test_decompose_jacobians(unique_fps, J_np, J_tf)
+                unique_fps.decompose_jacobians(str_prefix='\t')
+
+        self._print_if_verbose('\tFixed point finding complete.\n')
+
+        return unique_fps, all_fps
+
+    def _compute_recurrent_jacobians(self,fps):
+        inputs_np = fps.inputs
+
+        # TODO: inputs shape problem
+        if len(inputs_np.shape) == 2:
+            inputs_np = inputs_np.unsqueeze(-2)
+            
+        if self.is_lstm:
+            states_np = tf_utils.convert_to_LSTMStateTuple(fps.xstar)
+        else:
+            states_np = fps.xstar
+
+        x = torch.from_numpy(states_np).unsqueeze(0).to(torch.float32)
+        states_torch = torch.from_numpy(states_np).unsqueeze(0)
+        _, n_fixed_points, hidden_dim = states_torch.shape
+        J = torch.zeros ((n_fixed_points, hidden_dim, hidden_dim))   # loop will fill in Jacobian
+        states_torch.requires_grad = True
+        preds, states = self.rnn_cell(fps.inputs.unsqueeze(-2),states_torch)
+                
+        for  i in range(hidden_dim):
+            grd = torch.zeros(size=(1,n_fixed_points, hidden_dim))   # same shape as preds
+            grd[:, :, i] = 1    # column of Jacobian to compute
+            states.backward(gradient = grd, retain_graph = True)
+            J[:,:,i] = states_torch.grad   # fill in one column of Jacobian
+            states_torch.grad.zero_()   # .backward() accumulates gradients, so reset to zero
+        
+        dFdx = J.detach().numpy()
+        
+        return dFdx
+        
+    def _compute_input_jacobians(self,fps):
+        inputs_np = fps.inputs
+
+        # TODO: inputs shape problem
+        if len(inputs_np.shape) == 2:
+            inputs_np = inputs_np.unsqueeze(-2)
+            
+        if self.is_lstm:
+            states_np = tf_utils.convert_to_LSTMStateTuple(fps.xstar)
+        else:
+            states_np = fps.xstar
+
+        x = torch.from_numpy(states_np).unsqueeze(0).to(torch.float32)
+        states_torch = torch.from_numpy(states_np).unsqueeze(0)
+        inputs_torch = fps.inputs.unsqueeze(-2)
+
+        n_inputs, _, input_dim = inputs_torch.shape
+        _, n_fixed_points, hidden_dim = states_torch.shape
+
+        J = torch.zeros ((n_inputs, hidden_dim, input_dim))   # loop will fill in Jacobian
+        inputs_torch.requires_grad = True
+
+        preds, states = self.rnn_cell(fps.inputs.unsqueeze(-2),states_torch)
+        for  i in range(hidden_dim):
+            grd = torch.ones(n_inputs,1,input_dim)   # same shape as preds
+            inputs_torch.backward(gradient = grd, retain_graph = True)
+            J[:,i,:] = inputs_torch.grad.squeeze(-2)   # remove time dim
+            inputs_torch.grad.zero_()   # .backward() accumulates gradients, so reset to zero
+        dFdu = J.detach().numpy()
+        return dFdu
+
+    def rnn_wrapper(self, inputs,states):
+        _, h = self.rnn_cell(inputs, states)
+        return h
+        
+    def sample_states(self, state_traj, n_inits,valid_bxt=None,noise_scale=0.0):
+        state_traj_bxtxd = state_traj
+
+        [n_batch, n_time, n_states] = state_traj_bxtxd.shape
+
+        valid_bxt = self._get_valid_mask(n_batch, n_time, valid_bxt=valid_bxt)
+        trial_indices, time_indices = self._sample_trial_and_time_indices(
+            valid_bxt, n_inits)
+
+        # Draw random samples from state trajectories
+        states = np.zeros([n_inits, n_states])
+        for init_idx in range(n_inits):
+            trial_idx = trial_indices[init_idx]
+            time_idx = time_indices[init_idx]
+            states[init_idx,:] = state_traj_bxtxd[trial_idx, time_idx]
+            
+        # Add IID Gaussian noise to the sampled states
+        states = self._add_gaussian_noise(states, noise_scale)
+        assert not np.any(np.isnan(states)),\
+            'Detected NaNs in sampled states. Check state_traj and valid_bxt.'
+    
+        return states

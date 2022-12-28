@@ -7,3 +7,5 @@ events.out.tfevents*
 *.pyc
 *.sublime-workspace
 *.sublime-project
+logs/*
+run_example.py

@@ -117,7 +117,6 @@ def find_fixed_points(model, valid_predictions):
 
     NOISE_SCALE = 0.5 # Standard deviation of noise added to initial states
     N_INITS = 1024 # The number of initial states to provide
-
     n_bits = model.hps.data_hps['n_bits']
     is_lstm = model.hps.rnn_type == 'lstm'
 
@@ -136,7 +135,6 @@ def find_fixed_points(model, valid_predictions):
     initial_states = fpf.sample_states(valid_predictions['state'],
         n_inits=N_INITS,
         noise_scale=NOISE_SCALE)
-
     # Run the fixed point finder
     unique_fps, all_fps = fpf.find_fixed_points(initial_states, inputs)
 
