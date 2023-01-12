@@ -158,124 +158,126 @@ def plot_fps(fps,
     plt.pause(1e-10)
 
 def plot_fixed_point(ax, fp, pca,
-    scale=1.0,
-    max_n_modes=3,
-    do_plot_unstable_fps=True,
-    do_plot_stable_modes=False, # (for unstable FPs)
-    stable_color='k',
-    stable_marker='.',
-    unstable_color='r',
-    unstable_marker=None,
-    **kwargs):
-    '''Plots a single fixed point and its dominant eigenmodes.
+	scale=1.0,
+	max_n_modes=3,
+	do_plot_unstable_fps=True,
+	do_plot_stable_modes=False, # (for unstable FPs)
+	stable_color='k',
+	stable_marker='.',
+	unstable_color='r',
+	unstable_marker=None,
+	**kwargs):
+	'''Plots a single fixed point and its dominant eigenmodes.
 
-    Args:
-        ax: Matplotlib figure axis on which to plot everything.
+	Args:
+		ax: Matplotlib figure axis on which to plot everything.
 
-        fp: a FixedPoints object containing a single fixed point
-        (i.e., fp.n == 1),
+		fp: a FixedPoints object containing a single fixed point
+		(i.e., fp.n == 1),
 
-        pca: PCA object as returned by sklearn.decomposition.PCA. This
-        is used to transform the high-d state space representations
-        into 3-d for visualization.
+		pca: PCA object as returned by sklearn.decomposition.PCA. This
+		is used to transform the high-d state space representations
+		into 3-d for visualization.
 
-        scale (optional): Scale factor for stretching (>1) or shrinking
-        (<1) lines representing eigenmodes of the Jacobian. Default:
-        1.0 (unity).
+		scale (optional): Scale factor for stretching (>1) or shrinking
+		(<1) lines representing eigenmodes of the Jacobian. Default:
+		1.0 (unity).
 
-        max_n_modes (optional): Maximum number of eigenmodes to plot.
-        Default: 3.
+		max_n_modes (optional): Maximum number of eigenmodes to plot.
+		Default: 3.
 
-        do_plot_stable_modes (optional): bool indicating whether or
-        not to plot lines representing stable modes (i.e.,
-        eigenvectors of the Jacobian whose eigenvalue magnitude is
-        less than one).
+		do_plot_stable_modes (optional): bool indicating whether or
+		not to plot lines representing stable modes (i.e.,
+		eigenvectors of the Jacobian whose eigenvalue magnitude is
+		less than one).
 
-    Returns:
-        None.
-    '''
-    xstar = fp.xstar
-    J = fp.J_xstar
-    n_states = fp.n_states
+	Returns:
+		None.
+	'''
 
-    has_J = J is not None
+	xstar = fp.xstar
+	J = fp.J_xstar
+	n_states = fp.n_states
 
-    if has_J:
+	has_J = J is not None
 
-        if not fp.has_decomposed_jacobians:
-            ''' Ideally, never wind up here. Eigen decomposition is much faster in batch mode.'''
-            print('Decomposing Jacobians, one fixed point at time.')
-            print('\t warning: THIS CAN BE VERY SLOW.')
-            fp.decompose_Jacobians()
+	if has_J:
 
-        e_vals = fp.eigval_J_xstar[0]
-        e_vecs = fp.eigvec_J_xstar[0]
-        sorted_e_val_idx = np.argsort(np.abs(e_vals))
+		if not fp.has_decomposed_jacobians:
+			''' Ideally, never wind up here. Eigen decomposition is much faster in batch mode.'''
+			print('Decomposing Jacobians, one fixed point at time.')
+			print('\t warning: THIS CAN BE VERY SLOW.')
+			fp.decompose_Jacobians()
 
-        if max_n_modes > n_states:
-            max_n_modes = n_states
+		e_vals = fp.eigval_J_xstar[0]
+		e_vecs = fp.eigvec_J_xstar[0]
 
-        # Determine stability of fixed points
-        is_stable = np.all(np.abs(e_vals) < 1.0)
+		sorted_e_val_idx = np.argsort(np.abs(e_vals))
 
-        if is_stable:
-            color = stable_color
-            marker = stable_marker
-        else:
-            color = unstable_color
-            marker = unstable_marker
-    else:
-        color = stable_color
-        marker = stable_marker
+		if max_n_modes > n_states:
+			max_n_modes = n_states
 
-    do_plot = (not has_J) or is_stable or do_plot_unstable_fps
+		# Determine stability of fixed points
+		is_stable = np.all(np.abs(e_vals) < 1.0)
 
-    if do_plot:
-        if has_J:
-            for mode_idx in range(max_n_modes):
-                # -[1, 2, ..., max_n_modes]
-                idx = sorted_e_val_idx[-(mode_idx+1)]
+		if is_stable:
+			color = stable_color
+			marker = stable_marker
+		else:
+			color = unstable_color
+			marker = unstable_marker
+	else:
+		color = stable_color
+		marker = stable_marker
 
-                # Magnitude of complex eigenvalue
-                e_val_mag = np.abs(e_vals[idx])
+	do_plot = (not has_J) or is_stable or do_plot_unstable_fps
 
-                if e_val_mag > 1.0 or do_plot_stable_modes:
+	if do_plot:
+		if has_J:
+			for mode_idx in range(max_n_modes):
+				# -[1, 2, ..., max_n_modes]
+				idx = sorted_e_val_idx[-(mode_idx+1)]
 
-                    # Already real. Cast to avoid warning.
-                    e_vec = np.real(e_vecs[:,idx])
+				# Magnitude of complex eigenvalue
+				e_val_mag = np.abs(e_vals[idx])
 
-                    # [1 x d] numpy arrays
-                    xstar_plus = xstar + scale*e_val_mag*e_vec
-                    xstar_minus = xstar - scale*e_val_mag*e_vec
+				if e_val_mag > 1.0 or do_plot_stable_modes:
 
-                    # [3 x d] numpy array
-                    xstar_mode = np.vstack((xstar_minus, xstar, xstar_plus))
+					# Already real. Cast to avoid warning.
+					e_vec = np.real(e_vecs[:,idx])
 
-                    if e_val_mag < 1.0:
-                        color = stable_color
-                    else:
-                        color = unstable_color
+					# [1 x d] numpy arrays
+					xstar_plus = xstar + scale*e_val_mag*e_vec
+					xstar_minus = xstar - scale*e_val_mag*e_vec
 
-                    if n_states >= 3 and pca is not None:
-                        # [3 x 3] numpy array
-                        zstar_mode = pca.transform(xstar_mode)
-                    else:
-                        zstar_mode = xstar_mode
+					# [3 x d] numpy array
+					xstar_mode = np.vstack((xstar_minus, xstar, xstar_plus))
 
-                    plot_123d(ax, zstar_mode,
-                              color=color,
-                              **kwargs)
+					if e_val_mag < 1.0:
+						color = stable_color
+					else:
+						color = unstable_color
 
-        if n_states >= 3 and pca is not None:
-            zstar = pca.transform(xstar)
-        else:
-            zstar = xstar
+					if n_states >= 3 and pca is not None:
+						# [3 x 3] numpy array
+						zstar_mode = pca.transform(xstar_mode)
+					else:
+						zstar_mode = xstar_mode
 
-        plot_123d(ax, zstar,
-                  color=color,
-                  marker=marker,
-                  markersize=12,
-                  **kwargs)
+					plot_123d(ax, zstar_mode,
+					          color=color,
+					          **kwargs)
+
+		if n_states >= 3 and pca is not None:
+			zstar = pca.transform(xstar)
+		else:
+			zstar = xstar
+
+		plot_123d(ax, zstar,
+		          color=color,
+		          marker=marker,
+		          markersize=12,
+		          **kwargs)
 
 def plot_123d(ax, z, **kwargs):
     '''Plots in 1D, 2D, or 3D.
@@ -298,10 +300,3 @@ def plot_123d(ax, z, **kwargs):
         ax.plot(z[:, 0], z[:, 1], **kwargs)
     elif n_states == 1:
         ax.plot(z, **kwargs)
-    # n_states = z.shape[1]
-    # if n_states ==3:
-    #     ax.scatter(z[:, 0], z[:, 1], z[:, 2]) #, **kwargs)
-    # elif n_states == 2:
-    #     ax.scatter(z[:, 0], z[:, 1])  #, **kwargs)
-    # elif n_states == 1:
-    #     ax.scatter(z) #, **kwargs)
