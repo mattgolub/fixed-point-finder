@@ -613,7 +613,7 @@ class FixedPointFinder(object):
                                'via joint optimization.')
 
         n, _ = tf_utils.safe_shape(initial_states)
-        
+
         x, F = self._grab_RNN(initial_states, inputs)
         
         # A shape [n,] TF Tensor of objectives (one per initial state) to be
@@ -1733,119 +1733,6 @@ class TorchFixedPointFinder(FixedPointFinder):
 
         return fps
 
-    def find_fixed_points(self, initial_states, inputs, cond_ids=None):
-        '''Finds RNN fixed points and the Jacobians at the fixed points.
-
-        Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n x n_states] numpy arrays. These data specify the initial
-            states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
-
-            inputs: Either a [1 x n_inputs] numpy array specifying a set of
-            constant inputs into the RNN to be used for all optimization
-            initializations, or an [n x n_inputs] numpy array specifying
-            potentially different inputs for each initialization.
-
-        Returns:
-            unique_fps: A FixedPoints object containing the set of unique
-            fixed points after optimizing from all initial_states. Two fixed
-            points are considered unique if all absolute element-wise
-            differences are less than tol_unique AND the corresponding inputs
-            are unique following the same criteria. See FixedPoints.py for
-            additional detail.
-
-            all_fps: A FixedPoints object containing the likely redundant set
-            of fixed points (and associated metadata) resulting from ALL
-            initializations in initial_states (i.e., the full set of fixed
-            points before filtering out putative duplicates to yield
-            unique_fps).
-        '''
-        n = initial_states.shape[0]
-
-        self._print_if_verbose('\nSearching for fixed points '
-                            'from %d initial states.\n' % n)
-        
-        if inputs.shape[0] == 1:
-            inputs_nxd = np.tile(inputs, [n, 1]) # safe, even if n == 1.
-        elif inputs.shape[0] == n:
-            inputs_nxd = inputs
-        else:
-            raise ValueError('Incompatible inputs shape: %s.' %
-                str(inputs.shape))
-
-        if self.method == 'sequential':
-            all_fps = self._run_sequential_optimizations(
-                initial_states, inputs_nxd, cond_ids=cond_ids)
-        elif self.method == 'joint':
-            all_fps = self._run_joint_optimization(
-                initial_states, inputs_nxd, cond_ids=cond_ids)
-        else:
-            raise ValueError('Unsupported optimization method. Must be either \
-                \'joint\' or \'sequential\', but was  \'%s\'' % self.method)
-
-        # Filter out duplicates after from the first optimization round
-        unique_fps = all_fps.get_unique()
-
-        self._print_if_verbose('\tIdentified %d unique fixed points.' %
-            unique_fps.n)
-
-        if self.do_exclude_distance_outliers:
-            unique_fps = \
-                self._exclude_distance_outliers(unique_fps, initial_states)
-
-        # Optionally run additional optimization iterations on identified
-        # fixed points with q values on the large side of the q-distribution.
-        if self.do_rerun_q_outliers:
-            unique_fps = \
-                self._run_additional_iterations_on_outliers(unique_fps)
-
-            # Filter out duplicates after from the second optimization round
-            unique_fps = unique_fps.get_unique()
-
-        # Optionally subselect from the unique fixed points (e.g., for
-        # computational savings when not all are needed.)
-        if unique_fps.n > self.max_n_unique:
-            self._print_if_verbose('\tRandomly selecting %d unique '
-                'fixed points to keep.' % self.max_n_unique)
-            max_n_unique = int(self.max_n_unique)
-            idx_keep = self.rng.choice(
-                unique_fps.n, max_n_unique, replace=False)
-            unique_fps = unique_fps[idx_keep]
-
-        if self.do_compute_jacobians:
-            if unique_fps.n > 0:
-
-                self._print_if_verbose('\tComputing recurrent Jacobian at %d '
-                    'unique fixed points.' % unique_fps.n)
-                dFdx = self._compute_recurrent_jacobians(unique_fps)
-                unique_fps.J_xstar = dFdx
-                self._print_if_verbose('\tComputing input Jacobian at %d '
-                    'unique fixed points.' % unique_fps.n)
-                dFdu  = self._compute_input_jacobians(unique_fps)
-                unique_fps.dFdu = dFdu
-
-            else:
-                # Allocate empty arrays, needed for robust concatenation
-                n_states = unique_fps.n_states
-                n_inputs = unique_fps.n_inputs
-
-                shape_dFdx = (0, n_states, n_states)
-                shape_dFdu = (0, n_states, n_inputs)
-
-                unique_fps.J_xstar = unique_fps._alloc_nan(shape_dFdx)
-                unique_fps.dFdu = unique_fps._alloc_nan(shape_dFdu)
-
-            if self.do_decompose_jacobians:
-                # self._test_decompose_jacobians(unique_fps, J_np, J_tf)
-                unique_fps.decompose_jacobians(str_prefix='\t')
-
-        self._print_if_verbose('\tFixed point finding complete.\n')
-
-        return unique_fps, all_fps
-
     def _compute_recurrent_jacobians(self,fps):
         inputs_np = fps.inputs
 
@@ -1873,8 +1760,8 @@ class TorchFixedPointFinder(FixedPointFinder):
             states_torch.grad.zero_()   # .backward() accumulates gradients, so reset to zero
         
         dFdx = J.detach().numpy()
-        
-        return dFdx
+        # return None since tf compute graph is not applicable
+        return dFdx, None
         
     def _compute_input_jacobians(self,fps):
         inputs_np = fps.inputs
@@ -1905,7 +1792,8 @@ class TorchFixedPointFinder(FixedPointFinder):
             J[:,i,:] = inputs_torch.grad.squeeze(-2)   # remove time dim
             inputs_torch.grad.zero_()   # .backward() accumulates gradients, so reset to zero
         dFdu = J.detach().numpy()
-        return dFdu
+        # return None since tf compute graph is not applicable
+        return dFdu, None
 
     def rnn_wrapper(self, inputs,states):
         _, h = self.rnn_cell(inputs, states)
