@@ -141,10 +141,10 @@ def is_lstm(x):
         A bool indicating whether x is an LSTMCell or any object derived from
         one.
     '''
-    if isinstance(x,  tf.compat.v1.nn.rnn_cell.LSTMCell):
+    if isinstance(x, tf.nn.rnn_cell.LSTMCell):
         return True
 
-    if isinstance(x, tf.compat.v1.nn.rnn_cell.LSTMStateTuple):
+    if isinstance(x, tf.nn.rnn_cell.LSTMStateTuple):
         return True
 
     return False
