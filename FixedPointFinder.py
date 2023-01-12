@@ -382,6 +382,7 @@ class FixedPointFinder(object):
 
         # Add IID Gaussian noise to the sampled states
         states = self._add_gaussian_noise(states, noise_scale)
+
         assert not np.any(np.isnan(states)),\
             'Detected NaNs in sampled states. Check state_traj and valid_bxt.'
 
@@ -424,7 +425,7 @@ class FixedPointFinder(object):
 
         self._print_if_verbose('\nSearching for fixed points '
                                'from %d initial states.\n' % n)
-        
+
         if inputs.shape[0] == 1:
             inputs_nxd = np.tile(inputs, [n, 1]) # safe, even if n == 1.
         elif inputs.shape[0] == n:
@@ -474,6 +475,7 @@ class FixedPointFinder(object):
 
         if self.do_compute_jacobians:
             if unique_fps.n > 0:
+
                 self._print_if_verbose('\tComputing recurrent Jacobian at %d '
                     'unique fixed points.' % unique_fps.n)
                 dFdx, dFdx_tf = self._compute_recurrent_jacobians(unique_fps)
@@ -494,6 +496,7 @@ class FixedPointFinder(object):
 
                 unique_fps.J_xstar = unique_fps._alloc_nan(shape_dFdx)
                 unique_fps.dFdu = unique_fps._alloc_nan(shape_dFdu)
+            
             if self.do_decompose_jacobians:
                 # self._test_decompose_jacobians(unique_fps, J_np, J_tf)
                 unique_fps.decompose_jacobians(str_prefix='\t')
@@ -890,14 +893,6 @@ class FixedPointFinder(object):
             ev_q,
             ev_dq,
             ev_grad_norm) = self.session.run(ops_to_eval, feed_dict)
-
-            # if iter_count % 50 == 0:
-            #     import matplotlib.pyplot as plt
-            #     fig = plt.figure()
-            #     plt.imshow(ev_x, aspect='auto')
-            #     plt.colorbar()
-            #     plt.savefig(f'../tf_hidden_states/hidden_state_{iter_count}.png')
-            #     plt.close(fig)
 
             if self.super_verbose and \
                 np.mod(iter_count, self.n_iters_per_print_update)==0:
