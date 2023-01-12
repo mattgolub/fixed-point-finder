@@ -324,7 +324,7 @@ class FixedPointFinder(object):
 
         assert not np.any(np.isnan(input_samples)),\
             'Detected NaNs in sampled inputs. Check inputs and valid_bxt.'
-        
+            
         if self.is_lstm:
             return input_samples, tf_utils.convert_to_LSTMStateTuple(states)
         else:
