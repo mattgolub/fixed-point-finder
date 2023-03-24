@@ -3,5 +3,5 @@ scipy==1.1.0
 scikit-learn==0.20.0
 matplotlib==2.2.3
 PyYAML==3.13
-tensorflow==1.14.0
+tensorflow==2.11.1
 -e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=recurrent-whisperer
