@@ -391,7 +391,7 @@ class FixedPoints(object):
             data_nxd = np.concatenate((self.xstar, self.inputs), axis=1)
 
         idx_keep = []
-        idx_checked = np.zeros(self.n, dtype=np.bool)
+        idx_checked = np.zeros(self.n, dtype=bool)
         for idx in range(self.n):
 
             if idx_checked[idx]:
@@ -608,7 +608,7 @@ class FixedPoints(object):
             self._alloc_nan((n, n_states), dtype=self.dtype_complex)
         self.eigvec_J_xstar = \
             self._alloc_nan((n, n_states, n_states), dtype=self.dtype_complex)
-        self.is_stable = np.zeros(n, dtype=np.bool)
+        self.is_stable = np.zeros(n, dtype=bool)
 
         for k in range(n):
             sort_idx_k = sort_idx[k]
