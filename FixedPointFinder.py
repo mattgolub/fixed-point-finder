@@ -1103,7 +1103,7 @@ class FixedPointFinder(object):
         '''
 
         if valid_bxt is None:
-            valid_bxt = np.ones((n_batch, n_time), dtype=np.bool)
+            valid_bxt = np.ones((n_batch, n_time), dtype=bool)
         else:
 
             assert (valid_bxt.shape[0] == n_batch and
@@ -1111,8 +1111,8 @@ class FixedPointFinder(object):
                 ('valid_bxt.shape should be %s, but is %s'
                  % ((n_batch, n_time), valid_bxt.shape))
 
-            if not valid_bxt.dtype == np.bool:
-                valid_bxt = valid_bxt.astype(np.bool)
+            if not valid_bxt.dtype == bool:
+                valid_bxt = valid_bxt.astype(bool)
 
         return valid_bxt
 
