@@ -8,8 +8,11 @@ Please direct correspondence to mgolub@cs.washington.edu
 
 import pdb
 import numpy as np
+
 import tensorflow as tf
 tf1 = tf.compat.v1
+tf1.disable_eager_execution()
+# tf1.disable_v2_behavior()
 
 '''
 These utility functions are primarily for robustly managing TFs different
