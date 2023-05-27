@@ -7,17 +7,12 @@ Please direct correspondence to mgolub@cs.washington.edu
 
 import os
 import sys
-import tensorflow as tf
-tf1 = tf.compat.v1
 import numpy as np
 
-if os.environ.get('DISPLAY','') == '':
-    # Ensures smooth running across environments, including servers without
-    # graphical backends.
-    print('No display found. Using non-interactive Agg backend.')
-    import matplotlib
-    matplotlib.use('Agg')
+import tensorflow as tf
+tf1 = tf.compat.v1
 import matplotlib.pyplot as plt
+
 from RecurrentWhisperer import RecurrentWhisperer
 import tf_utils
 

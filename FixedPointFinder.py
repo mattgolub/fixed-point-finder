@@ -22,7 +22,7 @@ import pdb
 
 import tensorflow as tf
 tf1 = tf.compat.v1
-tf1.disable_eager_execution()
+# tf1.disable_eager_execution()
 # tf1.disable_v2_behavior()
 
 from FixedPoints import FixedPoints
