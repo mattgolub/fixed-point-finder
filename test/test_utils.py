@@ -6,9 +6,12 @@ Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import numpy as np
+import matplotlib.pyplot as plt
+
 import tensorflow as tf
 tf1 = tf.compat.v1
-import matplotlib.pyplot as plt
+tf1.disable_eager_execution()
+# tf1.disable_v2_behavior()
 
 def build_test_rnn(n_hidden, n_inputs, session):
     '''Build a "vanilla" RNNCell and deterministically set its weights. The

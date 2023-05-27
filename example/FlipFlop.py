@@ -8,10 +8,12 @@ Please direct correspondence to mgolub@cs.washington.edu
 import os
 import sys
 import numpy as np
+import matplotlib.pyplot as plt
 
 import tensorflow as tf
 tf1 = tf.compat.v1
-import matplotlib.pyplot as plt
+tf1.disable_eager_execution()
+# tf1.disable_v2_behavior()
 
 from RecurrentWhisperer import RecurrentWhisperer
 import tf_utils
