@@ -2,9 +2,6 @@
 
 Finds and analyzes the fixed points of recurrent neural networks that have been built using Tensorflow. The approach follows that outlined in Sussillo and Barak (2013), "Opening the Black Box: Low-Dimensional Dynamics in High-Dimensional Recurrent Neural Networks", *Neural Computation*.
 
-Written for Python 3.9.6.
-
-
 **If you are using FixedPointFinder in research to be published, please cite our accompanying paper in your publication:**
 
 Golub and Sussillo (2018), "FixedPointFinder: A Tensorflow toolbox for identifying and characterizing fixed points in recurrent neural networks," *Journal of Open Source Software*, 3(31), 1003, https://doi.org/10.21105/joss.01003 .
@@ -41,7 +38,7 @@ Advanced Python users and those wishing to develop [contributions](https://githu
 
 2. Install [compatible versions](https://github.com/mattgolub/fixed-point-finder/blob/master/requirements-cpu.txt) of the following prerequisites.
 
-* **TensorFlow** (recommended version >= 2.8; requires at least version 1.14) ([install](https://www.tensorflow.org/install/)).
+* **TensorFlow** (recommended version: 2.8; requires at least version 1.14; versions beyond 2.8 are not currently supported) ([install](https://www.tensorflow.org/install/)).
 * **NumPy, SciPy, Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains all of them).
 * **Scikit-learn** ([install](http://scikit-learn.org/)).
 * **PyYaml** ([install](https://pyyaml.org/)).
