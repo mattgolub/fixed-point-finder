@@ -2,9 +2,6 @@
 
 Finds and analyzes the fixed points of recurrent neural networks that have been built using Tensorflow. The approach follows that outlined in Sussillo and Barak (2013), "Opening the Black Box: Low-Dimensional Dynamics in High-Dimensional Recurrent Neural Networks", *Neural Computation*.
 
-Written for Python 3.6.9.
-
-
 **If you are using FixedPointFinder in research to be published, please cite our accompanying paper in your publication:**
 
 Golub and Sussillo (2018), "FixedPointFinder: A Tensorflow toolbox for identifying and characterizing fixed points in recurrent neural networks," *Journal of Open Source Software*, 3(31), 1003, https://doi.org/10.21105/joss.01003 .
@@ -27,18 +24,10 @@ Golub and Sussillo (2018), "FixedPointFinder: A Tensorflow toolbox for identifyi
     ```bash
     $ deactivate
     ```
-3. Automatically assemble all dependencies using `pip` and the `requirements*.txt` files. This step will depend on whether you require Tensorflow with GPU support.
-
-    For GPU-enabled TensorFlow, use:
+3. Automatically assemble all dependencies using `pip` and the `requirements*.txt` files. 
 
     ```bash
-    $ pip install -r requirements-gpu.txt
-    ```
-
-    For CPU-only TensorFlow, use:
-
-    ```bash
-    $ pip install -r requirements-cpu.txt
+    $ pip install -r requirements.txt
     ```
 
 ## Advanced Installation
@@ -49,7 +38,7 @@ Advanced Python users and those wishing to develop [contributions](https://githu
 
 2. Install [compatible versions](https://github.com/mattgolub/fixed-point-finder/blob/master/requirements-cpu.txt) of the following prerequisites.
 
-* **TensorFlow** (requires at least version 1.10) ([install](https://www.tensorflow.org/install/)).
+* **TensorFlow** (recommended version: 2.8; requires at least version 1.14; versions beyond 2.8 are not currently supported) ([install](https://www.tensorflow.org/install/)).
 * **NumPy, SciPy, Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains all of them).
 * **Scikit-learn** ([install](http://scikit-learn.org/)).
 * **PyYaml** ([install](https://pyyaml.org/)).
@@ -68,7 +57,7 @@ Advanced Python users and those wishing to develop [contributions](https://githu
 
 ``FixedPointFinder`` includes a test suite for confirming successful installation, and for ensuring that [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) have not introduced bugs into the main control flow. The tests run ``FixedPointFinder`` over a set of RNNs where ground truth fixed points have been previously identified, numerically confirmed, and saved for comparison.
 
-Note: Tests are not currently functional--they are temporarily down following the codebase update to Python3. That said, the rest of the codebase should be fully usable, including the 3-bit flip flop example. Stay tuned.
+Note: Tests are not currently functional due to package upgrades in 2022-2023. That said, the rest of the codebase should be fully usable, including the 3-bit flip flop example. Stay tuned.
 
 To run the tests, descend into the test directory: `fixed-point-finder/test/` and execute:
 

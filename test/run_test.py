@@ -1,15 +1,19 @@
 '''
 run_test.py
 Tests the FixedPointFinder package
-Written for Python 3.6.9 and TensorFlow 1.14
-@ Matt Golub, October 2018.
-Please direct correspondence to mgolub@stanford.edu.
+Written for Python 3.6.9 and TensorFlow 2.8.0
+@ Matt Golub, October 2018
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import pdb
-import numpy as np
-import tensorflow as tf
 import sys
+import numpy as np
+
+import tensorflow as tf
+tf1 = tf.compat.v1
+tf1.disable_eager_execution()
+# tf1.disable_v2_behavior()
 
 FIXED_POINT_FINDER_PATH = '../'
 TEST_PATH = './'
@@ -30,7 +34,7 @@ N_INPUTS = 1
 
 n_tests = len(N_HIDDEN_LIST)
 fpf_hps = {'do_rerun_q_outliers': True, 'verbose': False}
-session = tf.Session()
+session = tf1.Session()
 
 did_pass_tests1 = [False] * n_tests
 did_pass_tests2 = [False] * n_tests

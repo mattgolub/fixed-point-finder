@@ -1,13 +1,17 @@
 '''
 test_utils.py
-Written for Python 3.6.9 and TensorFlow 1.14
-@ Matt Golub, October 2018.
-Please direct correspondence to mgolub@stanford.edu.
+Written for Python 3.6.9 and TensorFlow 2.8.0
+@ Matt Golub, October 2018
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import numpy as np
-import tensorflow as tf
 import matplotlib.pyplot as plt
+
+import tensorflow as tf
+tf1 = tf.compat.v1
+tf1.disable_eager_execution()
+# tf1.disable_v2_behavior()
 
 def build_test_rnn(n_hidden, n_inputs, session):
     '''Build a "vanilla" RNNCell and deterministically set its weights. The
@@ -27,7 +31,7 @@ def build_test_rnn(n_hidden, n_inputs, session):
         session:
             A Tensorflow session within which to initialize the RNNCell.
     '''
-    rnn_cell = tf.nn.rnn_cell.BasicRNNCell(n_hidden)
+    rnn_cell = tf1.nn.rnn_cell.BasicRNNCell(n_hidden)
     # rnn_cell = tf.nn.rnn_cell.GRUCell(n_hidden)
     # rnn_cell = tf.nn.rnn_cell.LSTMCell(n_hidden)
 
@@ -53,10 +57,10 @@ def build_test_rnn(n_hidden, n_inputs, session):
     output, final_state = rnn_cell(input_data, state)
     W_tf, b_tf = rnn_cell.variables
 
-    assign_W = tf.assign(W_tf, W_np)
-    assign_b = tf.assign(b_tf, b_np)
+    assign_W = W_tf.assign(W_np)
+    assign_b = b_tf.assign(b_np)
 
-    session.run(tf.global_variables_initializer())
+    session.run(tf1.global_variables_initializer())
     session.run([assign_W, assign_b])
 
     return rnn_cell

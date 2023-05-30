@@ -5,7 +5,6 @@ checkpoint
 events.out.tfevents*
 *.pkl
 *.pyc
+*.DS_Store
 *.sublime-workspace
 *.sublime-project
-logs/*
-run_example.py
