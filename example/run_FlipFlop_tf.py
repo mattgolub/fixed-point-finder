@@ -69,8 +69,8 @@ def train_FlipFlop(train_mode):
 
     model = FlipFlop(**hps)
 
-    train_data = model.generate_data()
-    valid_data = model.generate_data()
+    train_data = model.generate_data(n_trials=hps['data_hps']['n_batch'])
+    valid_data = model.generate_data(n_trials=hps['data_hps']['n_batch'])
 
     if train_mode == 1:
         model.train()

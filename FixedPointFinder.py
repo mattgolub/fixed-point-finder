@@ -30,8 +30,6 @@ from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 from Timer import Timer
 import tf_utils
-import torch
-
 
 class FixedPointFinder(object):
 

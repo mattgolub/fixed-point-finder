@@ -16,6 +16,7 @@ tf1.disable_eager_execution()
 # tf1.disable_v2_behavior()
 
 from RecurrentWhisperer import RecurrentWhisperer
+from FlipFlopData import FlipFlopData
 import tf_utils
 
 class FlipFlop(RecurrentWhisperer):
@@ -80,7 +81,7 @@ class FlipFlop(RecurrentWhisperer):
         meant to be constant across models. Default: '/tmp/flipflop_logs/'.
 
         n_trials_plot: int specifying the number of synthetic trials to plot
-        per visualization update. Default: 4.
+        per visualization update. Default: 1.
     '''
 
     @staticmethod
@@ -234,7 +235,7 @@ class FlipFlop(RecurrentWhisperer):
         '''
         feed_dict = dict()
         feed_dict[self.inputs_bxtxd] = data['inputs']
-        feed_dict[self.output_bxtxd] = data['output']
+        feed_dict[self.output_bxtxd] = data['targets']
         return feed_dict
 
     def _get_pred_ops(self):
@@ -269,44 +270,15 @@ class FlipFlop(RecurrentWhisperer):
         '''
 
         data_hps = self.hps.data_hps
-        n_batch = data_hps['n_batch']
-        n_time = data_hps['n_time']
-        n_bits = data_hps['n_bits']
-        p_flip = data_hps['p_flip']
 
-        # Randomly generate unsigned input pulses
-        unsigned_inputs = self.rng.binomial(
-            1, p_flip, [n_batch, n_time, n_bits])
-
-        # Ensure every trial is initialized with a pulse at time 0
-        unsigned_inputs[:, 0, :] = 1
-
-        # Generate random signs {-1, +1}
-        random_signs = 2*self.rng.binomial(
-            1, 0.5, [n_batch, n_time, n_bits]) - 1
-
-        # Apply random signs to input pulses
-        inputs = np.multiply(unsigned_inputs, random_signs)
-
-        # Allocate output
-        output = np.zeros([n_batch, n_time, n_bits])
-
-        # Update inputs (zero-out random start holds) & compute output
-        for trial_idx in range(n_batch):
-            for bit_idx in range(n_bits):
-                input_ = np.squeeze(inputs[trial_idx, :, bit_idx])
-                t_flip = np.where(input_ != 0)
-                for flip_idx in range(np.size(t_flip)):
-                    # Get the time of the next flip
-                    t_flip_i = t_flip[0][flip_idx]
-
-                    '''Set the output to the sign of the flip for the
-                    remainder of the trial. Future flips will overwrite future
-                    output'''
-                    output[trial_idx, t_flip_i:, bit_idx] = \
-                        inputs[trial_idx, t_flip_i, bit_idx]
-
-        return {'inputs': inputs, 'output': output}
+        DataGen = FlipFlopData(
+            n_batch=data_hps['n_batch'],
+            n_time=data_hps['n_time'],
+            n_bits=data_hps['n_bits'],
+            p_flip=data_hps['p_flip'])
+        
+        # return {'inputs': inputs, 'targets': targets}
+        return DataGen.generate_data()
 
     def _split_data_into_batches(self, data):
         '''See docstring in RecurrentWhisperer.'''
@@ -337,22 +309,7 @@ class FlipFlop(RecurrentWhisperer):
         self.plot_trials(data, pred)
         self.refresh_figs()
 
-    def plot_trials(self, data, pred, start_time=0, stop_time=None):
-        '''Plots example trials, complete with input pulses, correct outputs,
-        and RNN-predicted outputs.
-
-        Args:
-            data: dict as returned by generate_flipflop_trials.
-
-            start_time (optional): int specifying the first timestep to plot.
-            Default: 0.
-
-            stop_time (optional): int specifying the last timestep to plot.
-            Default: n_time.
-
-        Returns:
-            None.
-        '''
+    def plot_trials(self, data, pred):
 
         FIG_WIDTH = 6 # inches
         FIG_HEIGHT = 3 # inches
@@ -362,77 +319,7 @@ class FlipFlop(RecurrentWhisperer):
             height=FIG_HEIGHT)
 
         hps = self.hps
-        n_batch = self.hps.data_hps['n_batch']
-        n_time = self.hps.data_hps['n_time']
-        n_plot = np.min([hps.n_trials_plot, n_batch])
+        n_trials_plot = hps.n_trials_plot
+        
 
-        inputs = data['inputs']
-        output = data['output']
-        pred_output = pred['output']
-
-        if stop_time is None:
-            stop_time = n_time
-
-        time_idx = list(range(start_time, stop_time))
-
-        for trial_idx in range(n_plot):
-            ax = plt.subplot(n_plot, 1, trial_idx+1)
-            if n_plot == 1:
-                plt.title('Example trial', fontweight='bold')
-            else:
-                plt.title('Example trial %d' % (trial_idx + 1),
-                          fontweight='bold')
-
-            self._plot_single_trial(
-                inputs[trial_idx, time_idx, :],
-                output[trial_idx, time_idx, :],
-                pred_output[trial_idx, time_idx, :])
-
-            # Only plot x-axis ticks and labels on the bottom subplot
-            if trial_idx < (n_plot-1):
-                plt.xticks([])
-            else:
-                plt.xlabel('Timestep', fontweight='bold')
-
-    @staticmethod
-    def _plot_single_trial(input_txd, output_txd, pred_output_txd):
-
-        VERTICAL_SPACING = 2.5
-        [n_time, n_bits] = input_txd.shape
-        tt = list(range(n_time))
-
-        y_ticks = [VERTICAL_SPACING*bit_idx for bit_idx in range(n_bits)]
-        y_tick_labels = \
-            ['Bit %d' % (n_bits-bit_idx) for bit_idx in range(n_bits)]
-
-        plt.yticks(y_ticks, y_tick_labels, fontweight='bold')
-        for bit_idx in range(n_bits):
-
-            vertical_offset = VERTICAL_SPACING*bit_idx
-
-            # Input pulses
-            plt.fill_between(
-                tt,
-                vertical_offset + input_txd[:, bit_idx],
-                vertical_offset,
-                step='mid',
-                color='gray')
-
-            # Correct outputs
-            plt.step(
-                tt,
-                vertical_offset + output_txd[:, bit_idx],
-                where='mid',
-                linewidth=2,
-                color='cyan')
-
-            # RNN outputs
-            plt.step(
-                tt,
-                vertical_offset + pred_output_txd[:, bit_idx],
-                where='mid',
-                color='purple',
-                linewidth=1.5,
-                linestyle='--')
-
-        plt.xlim(-1, n_time)
+        FlipFlopData.plot_trials(data, pred, n_trials_plot=n_trials_plot, fig=fig)
