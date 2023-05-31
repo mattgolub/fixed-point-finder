@@ -222,7 +222,7 @@ class FixedPointFinder(object):
 
         if hasattr(rnn_cell, 'state_size'):
             self.is_lstm = isinstance(
-                rnn_cell.state_size, tf.nn.rnn_cell.LSTMStateTuple)
+                rnn_cell.state_size, tf1.nn.rnn_cell.LSTMStateTuple)
         else:
             self.is_lstm = False
         # *********************************************************************
