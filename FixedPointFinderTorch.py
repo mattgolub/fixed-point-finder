@@ -1,8 +1,8 @@
 '''
-TensorFlow FixedPointFinder
-Written for Python 3.6.9 and TensorFlow 2.8.0
-@ Matt Golub, October 2018.
-@ Alexander Ladd, January 2023
+Pytorch FixedPointFinder
+Written for Python 3.6.9 and Pytorch (version??)
+@ Matt Golub, 2018-2023.
+@ Alexander Ladd, 202
 
 If you are using FixedPointFinder in research to be published, 
 please cite our accompanying paper in your publication:
@@ -21,14 +21,21 @@ from copy import deepcopy
 import absl
 import pdb
 
+from FixedPointFinderBase import FixedPointFinderBase
 from FixedPoints import FixedPoints
-import tf_utils
 import torch
 
-class TorchFixedPointFinder(FixedPointFinder):
+class FixedPointFinderTorch(FixedPointFinderBase):
 
     def __init__(self,rnn, **kwargs):
-        super().__init__(rnn, None, **kwargs)
+        '''Creates a FixedPointFinder object.
+
+        Args:
+            rnn: A Pytorch RNN object.
+
+            See FixedPointFinderBase.py for additional keyword arguments.
+        '''
+        super().__init__(rnn, **kwargs)
 
     @staticmethod
     def compute_q(x, x_1):
@@ -138,10 +145,7 @@ class TorchFixedPointFinder(FixedPointFinder):
         if len(inputs_np.shape) == 2:
             inputs_np = inputs_np.unsqueeze(-2)
             
-        if self.is_lstm:
-            states_np = tf_utils.convert_to_LSTMStateTuple(fps.xstar)
-        else:
-            states_np = fps.xstar
+        states_np = fps.xstar
 
         x = torch.from_numpy(states_np).unsqueeze(0).to(torch.float32)
         states_torch = torch.from_numpy(states_np).unsqueeze(0)
@@ -168,10 +172,7 @@ class TorchFixedPointFinder(FixedPointFinder):
         if len(inputs_np.shape) == 2:
             inputs_np = inputs_np.unsqueeze(-2)
             
-        if self.is_lstm:
-            states_np = tf_utils.convert_to_LSTMStateTuple(fps.xstar)
-        else:
-            states_np = fps.xstar
+        states_np = fps.xstar
 
         x = torch.from_numpy(states_np).unsqueeze(0).to(torch.float32)
         states_torch = torch.from_numpy(states_np).unsqueeze(0)

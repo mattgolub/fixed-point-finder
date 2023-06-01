@@ -120,7 +120,6 @@ def find_fixed_points(model, valid_predictions):
     N_INITS = 1024 # The number of initial states to provide
 
     n_bits = model.hps.data_hps['n_bits']
-    is_lstm = model.hps.rnn_type == 'lstm'
 
     '''Fixed point finder hyperparameters. See FixedPointFinder.py for detailed
     descriptions of available hyperparameters.'''

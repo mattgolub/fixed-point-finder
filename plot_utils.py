@@ -82,12 +82,8 @@ def plot_fps(fps,
             tight_layout=True)
 
     if state_traj is not None:
-        if tf_utils.is_lstm(state_traj):
-            state_traj_bxtxd = tf_utils.convert_from_LSTMStateTuple(
-                state_traj)
-        else:
-            state_traj_bxtxd = state_traj
-
+        
+        state_traj_bxtxd = state_traj
         [n_batch, n_time, n_states] = state_traj_bxtxd.shape
 
         # Ensure plot_start_time >= 0

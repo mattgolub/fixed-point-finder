@@ -23,28 +23,7 @@ from torch.utils.data import Dataset, DataLoader
 # from plot_utils import plot_fps
 
 from FlipFlopData import FlipFlopData
-
-def get_device():
-	"""
-	Set the device. CUDA if available, else MPS if available (Apple Silicon), CPU otherwise
-
-	Args:
-		None.
-
-	Returns:
-		Device string ("cuda", "mps" or "cpu").
-	"""
-	if torch.backends.cuda.is_built() and torch.cuda.is_available():
-		device = "cuda"
-		print("CUDA GPU enabled.")
-	elif torch.backends.mps.is_built() and torch.backends.mps.is_available():
-		device = "mps"
-		print("Apple Silicon GPU enabled.")
-	else:
-		device = "cpu"
-		print("No GPU found. Running on CPU.")
-
-	return device
+from torch_utils import get_device
 
 class FlipFlopDataset(Dataset):
 	def __init__(self, inputs_bxtxd, targets_bxtxd, device='cpu'):
