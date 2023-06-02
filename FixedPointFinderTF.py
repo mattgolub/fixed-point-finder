@@ -17,7 +17,6 @@ Please direct correspondence to mgolub@cs.washington.edu
 import numpy as np
 import time
 from copy import deepcopy
-import absl
 import pdb
 
 import tensorflow as tf
@@ -29,7 +28,6 @@ from FixedPoints import FixedPoints
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
 from Timer import Timer
-import tf_utils
 
 class FixedPointFinderTF(FixedPointFinderBase):
 
@@ -43,8 +41,9 @@ class FixedPointFinderTF(FixedPointFinderBase):
             See FixedPointFinderBase.py for additional keyword arguments.
         '''
         self.session = sess
+        self.tf_dtype = getattr(tf, tf_dtype)
+        self.np_dtype = self.tf_dtype.as_numpy_dtype
         super().__init__(rnn_cell, **kwargs)
-
 
     # *************************************************************************
     # Tensorflow Core (these functions will be updated in next major revision)
@@ -146,7 +145,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
         self._print_if_verbose('\tFinding fixed points '
                                'via joint optimization.')
 
-        n, _ = tf_utils.safe_shape(initial_states)
+        n = initial_states.shape[0]
 
         x, F = self._grab_RNN(initial_states, inputs)
         
@@ -159,7 +158,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
         fps = FixedPoints(
             xstar=xstar,
-            x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_states),
+            x_init=initial_states,
             inputs=inputs,
             cond_id=cond_ids,
             F_xstar=F_xstar,
@@ -168,74 +167,6 @@ class FixedPointFinderTF(FixedPointFinderBase):
             n_iters=n_iters,
             tol_unique=self.tol_unique,
             dtype=self.np_dtype)
-
-        return fps
-
-    def _run_sequential_optimizations(self, initial_states, inputs,
-                                      cond_ids=None,
-                                      q_prior=None):
-        '''Finds fixed points sequentially, running an optimization from one
-        initial state at a time.
-
-        Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_states] numpy arrays. These data specify the initial
-            states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
-
-            inputs: An [n x n_inputs] numpy array specifying a set of constant
-            inputs into the RNN.
-
-            q_prior (optional): An [n,] numpy array containing q values from a
-            previous optimization round. Provide these if performing
-            additional optimization iterations on a subset of outlier
-            candidate fixed points. Default: None.
-
-        Returns:
-            fps: A FixedPoints object containing the optimized fixed points
-            and associated metadata.
-
-        '''
-
-        is_fresh_start = q_prior is None
-
-        if is_fresh_start:
-            self._print_if_verbose('\tFinding fixed points via '
-                                   'sequential optimizations...')
-
-        n_inits, n_states = tf_utils.safe_shape(initial_states)
-        n_inputs = inputs.shape[1]
-
-        # Allocate memory for storing results
-        fps = FixedPoints(do_alloc_nan=True,
-                          n=n_inits,
-                          n_states=n_states,
-                          n_inputs=n_inputs,
-                          dtype=self.np_dtype)
-
-        for init_idx in range(n_inits):
-
-            index = slice(init_idx, init_idx+1)
-
-            initial_states_i = tf_utils.safe_index(initial_states, index)
-            inputs_i = inputs[index]
-
-            if cond_ids is None:
-                colors_i = None
-            else:
-                colors_i = cond_ids[index]
-
-            if is_fresh_start:
-                self._print_if_verbose('\n\tInitialization %d of %d:' %
-                    (init_idx+1, n_inits))
-            else:
-                self._print_if_verbose('\n\tOutlier %d of %d (q=%.2e):' %
-                    (init_idx+1, n_inits, q_prior[init_idx]))
-
-            fps[init_idx] = self._run_single_optimization(
-                initial_states_i, inputs_i, cond_id=colors_i)
 
         return fps
 
@@ -266,7 +197,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
         fp = FixedPoints(
             xstar=xstar,
-            x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_state),
+            x_init=initial_state,
             inputs=inputs,
             cond_id=cond_id,
             F_xstar=F_xstar,
@@ -311,42 +242,6 @@ class FixedPointFinderTF(FixedPointFinderBase):
             iter_count: An int specifying the number of iterations completed
             before the optimization terminated.
         '''
-        def print_update(iter_count, q, dq, lr, is_final=False):
-
-            t = time.time()
-            t_elapsed = t - t_start
-            avg_iter_time = t_elapsed / iter_count
-
-            if is_final:
-                delimiter = '\n\t\t'
-                print('\t\t%d iters%s' % (iter_count, delimiter), end='')
-            else:
-                delimiter = ', '
-                print('\tIter: %d%s' % (iter_count, delimiter), end='')
-
-            if q.size == 1:
-                print('q = %.2e%sdq = %.2e%s' %
-                      (q, delimiter, dq, delimiter), end='')
-            else:
-                mean_q = np.mean(q)
-                std_q = np.std(q)
-
-                mean_dq = np.mean(dq)
-                std_dq = np.std(dq)
-
-                print('q = %.2e +/- %.2e%s'
-                      'dq = %.2e +/- %.2e%s' %
-                      (mean_q, std_q, delimiter, mean_dq, std_dq, delimiter),
-                      end='')
-
-            print('learning rate = %.2e%s' % (lr, delimiter), end='')
-
-            print('avg iter time = %.2e sec' % avg_iter_time, end='')
-
-            if is_final:
-                print('') # Just for the endline
-            else:
-                print('.')
 
         '''There are two obvious choices of how to combine multiple
         minimization objectives:
@@ -436,7 +331,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
             if self.super_verbose and \
                 np.mod(iter_count, self.n_iters_per_print_update)==0:
-                print_update(iter_count, ev_q, ev_dq, iter_learning_rate)
+                self._print_update(iter_count, ev_q, ev_dq, iter_learning_rate)
 
             if iter_count > 1 and \
                 np.all(np.logical_or(
@@ -461,10 +356,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
             iter_count += 1
 
         if self.verbose:
-            print_update(iter_count,
-                         ev_q, ev_dq,
-                         iter_learning_rate,
-                         is_final=True)
+            self._print_update(iter_count, ev_q, ev_dq, iter_learning_rate, is_final=True)
 
         iter_count = np.tile(iter_count, ev_q.shape)
         return ev_x, ev_F, ev_q, ev_dq, iter_count
@@ -549,7 +441,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
         return J_np, J_tf
 
     # *************************************************************************
-    # Helper functions, no interaction with Tensorflow graph ******************
+    # In development: *********************************************************
     # *************************************************************************
 
     @property
@@ -582,10 +474,6 @@ class FixedPointFinderTF(FixedPointFinderBase):
             An int specifying the size of the RNN's state.
         '''
         return self.rnn_cell.state_size
-
-    # *************************************************************************
-    # In development: *********************************************************
-    # *************************************************************************
 
     def approximate_updates(self, states, inputs, fps,
         do_compute_exact_update=True):
@@ -656,8 +544,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
             true_states = self.session.run(F, feed_dict=self.feed_dict)
             return approx_states, true_states
 
-    def _compute_approx_one_step_update(
-        self, states, inputs, dFdx, xstar, dFdu, u):
+    def _compute_approx_one_step_update(self, states, inputs, dFdx, xstar, dFdu, u):
         ''' Approximate one-step updates based on linearized dynamics around
         a fixed point.
 

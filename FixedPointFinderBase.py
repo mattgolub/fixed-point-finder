@@ -17,14 +17,11 @@ Please direct correspondence to mgolub@cs.washington.edu
 import numpy as np
 import time
 from copy import deepcopy
-import absl
 import pdb
 
 from FixedPoints import FixedPoints
-from AdaptiveLearningRate import AdaptiveLearningRate
-from AdaptiveGradNormClip import AdaptiveGradNormClip
-from Timer import Timer
-import tf_utils
+# from AdaptiveLearningRate import AdaptiveLearningRate
+# from AdaptiveGradNormClip import AdaptiveGradNormClip
 
 class FixedPointFinderBase(object):
 
@@ -73,7 +70,7 @@ class FixedPointFinderBase(object):
         '''
         return deepcopy(FixedPointFinder._default_hps)
 
-    def __init__(self, rnn_cell, sess,
+    def __init__(self, rnn_cell,
         feed_dict=_default_hps['feed_dict'],
         tol_q=_default_hps['tol_q'],
         tol_dq=_default_hps['tol_dq'],
@@ -104,8 +101,7 @@ class FixedPointFinderBase(object):
             2. dq < tol_dq * learning_rate
 
         Args:
-            rnn_cell: A Tensorflow RNN cell, which has been initialized or
-            restored in the Tensorflow session, 'sess'.
+            rnn_cell: A Pytorch RNN or a Tensorflow RNN cell.
 
             tol_q (optional): A positive scalar specifying the optimization
             termination criteria on each q-value. Default: 1e-12.
@@ -207,8 +203,6 @@ class FixedPointFinderBase(object):
 
         self.rnn_cell = rnn_cell
         self.feed_dict = feed_dict
-        self.tf_dtype = getattr(tf, tf_dtype)
-        self.np_dtype = self.tf_dtype.as_numpy_dtype
 
         # Make random sequences reproducible
         self.random_seed = random_seed
@@ -396,7 +390,7 @@ class FixedPointFinderBase(object):
             points before filtering out putative duplicates to yield
             unique_fps).
         '''
-        n = tf_utils.safe_shape(initial_states)[0]
+        n = initial_states.shape[0]
 
         self._print_if_verbose('\nSearching for fixed points '
                                'from %d initial states.\n' % n)
@@ -481,36 +475,111 @@ class FixedPointFinderBase(object):
         return unique_fps, all_fps
 
     # *************************************************************************
-    # Helper functions, no interaction with Tensorflow graph ******************
+    # Helper functions ********************************************************
     # *************************************************************************
 
-    @property
-    def _input_size(self):
-        ''' Gets the input size of the RNN. This is a bit of a hack to get
-        around the fact that rnn_cell.input_size is often undefined, even after
-        training and predicting from the model. A fine quirk of Tensorflow. Perhaps this is fixed in more recent versions of Tensorflow.
+    def _print_iter_update(iter_count, q, dq, lr, is_final=False):
+
+        t = time.time()
+        t_elapsed = t - t_start
+        avg_iter_time = t_elapsed / iter_count
+
+        if is_final:
+            delimiter = '\n\t\t'
+            print('\t\t%d iters%s' % (iter_count, delimiter), end='')
+        else:
+            delimiter = ', '
+            print('\tIter: %d%s' % (iter_count, delimiter), end='')
+
+        if q.size == 1:
+            print('q = %.2e%sdq = %.2e%s' %
+                  (q, delimiter, dq, delimiter), end='')
+        else:
+            mean_q = np.mean(q)
+            std_q = np.std(q)
+
+            mean_dq = np.mean(dq)
+            std_dq = np.std(dq)
+
+            print('q = %.2e +/- %.2e%s'
+                  'dq = %.2e +/- %.2e%s' %
+                  (mean_q, std_q, delimiter, mean_dq, std_dq, delimiter),
+                  end='')
+
+        print('learning rate = %.2e%s' % (lr, delimiter), end='')
+
+        print('avg iter time = %.2e sec' % avg_iter_time, end='')
+
+        if is_final:
+            print('') # Just for the endline
+        else:
+            print('.')
+
+    def _run_sequential_optimizations(self, initial_states, inputs,
+                                      cond_ids=None,
+                                      q_prior=None):
+        '''Finds fixed points sequentially, running an optimization from one
+        initial state at a time.
 
         Args:
-            None.
+            initial_states: Either an [n x n_states] numpy array or an
+            LSTMStateTuple with initial_states.c and initial_states.h as
+            [n_inits x n_states] numpy arrays. These data specify the initial
+            states of the RNN, from which the optimization will search for
+            fixed points. The choice of type must be consistent with state
+            type of rnn_cell.
+
+            inputs: An [n x n_inputs] numpy array specifying a set of constant
+            inputs into the RNN.
+
+            q_prior (optional): An [n,] numpy array containing q values from a
+            previous optimization round. Provide these if performing
+            additional optimization iterations on a subset of outlier
+            candidate fixed points. Default: None.
 
         Returns:
-            An int specifying the size of the RNN's inputs.
+            fps: A FixedPoints object containing the optimized fixed points
+            and associated metadata.
+
         '''
-        raise NotImplementedError()
 
-    @property
-    def _state_size(self):
-        ''' Gets the state size of the RNN. For an LSTM, here state size is
-        defined by the concatenated (hidden, cell) size.
+        is_fresh_start = q_prior is None
 
-        Args:
-            None
+        if is_fresh_start:
+            self._print_if_verbose('\tFinding fixed points via '
+                                   'sequential optimizations...')
 
-        Returns:
-            An int specifying the size of the RNN's state.
-        '''
-        raise NotImplementedError()
+        n_inits, n_states = initial_states.shape
+        n_inputs = inputs.shape[1]
 
+        # Allocate memory for storing results
+        fps = FixedPoints(do_alloc_nan=True,
+                          n=n_inits,
+                          n_states=n_states,
+                          n_inputs=n_inputs,
+                          dtype=self.np_dtype)
+
+        for init_idx in range(n_inits):
+
+            initial_states_i = initial_states[init_idx:(init_idx+1)]
+            inputs_i = inputs[index]
+
+            if cond_ids is None:
+                colors_i = None
+            else:
+                colors_i = cond_ids[index]
+
+            if is_fresh_start:
+                self._print_if_verbose('\n\tInitialization %d of %d:' %
+                    (init_idx+1, n_inits))
+            else:
+                self._print_if_verbose('\n\tOutlier %d of %d (q=%.2e):' %
+                    (init_idx+1, n_inits, q_prior[init_idx]))
+
+            fps[init_idx] = self._run_single_optimization(
+                initial_states_i, inputs_i, cond_id=colors_i)
+
+        return fps
 
     def _sample_trial_and_time_indices(self, valid_bxt, n):
         ''' Generate n random indices corresponding to True entries in
@@ -738,8 +807,7 @@ class FixedPointFinderBase(object):
             outlier_fps = fps[idx_outliers]
             n_prev_iters = outlier_fps.n_iters
             inputs = outlier_fps.inputs
-            initial_states = self._get_rnncell_compatible_states(
-                outlier_fps.xstar)
+            initial_states = outlier_fps.xstar
             cond_ids = outlier_fps.cond_id
 
             if method == 'joint':
@@ -808,21 +876,6 @@ class FixedPointFinderBase(object):
         outlier_update(fps) # For print output only
 
         return fps
-
-    def _get_rnncell_compatible_states(self, states):
-        '''Converts RNN states if necessary to be compatible with
-        self.rnn_cell.
-
-        Args:
-            states:
-                Either a numpy array or LSTMStateTuple.
-
-        Returns:
-            A representation of states that is compatible with self.rnn_cell.
-            If self.rnn_cell is an LSTMCell, the representation is as an
-            LSTMStateTuple. Otherwise, the representation is a numpy array.
-        '''
-        return states
 
     def _print_if_verbose(self, *args, **kwargs):
         if self.verbose:

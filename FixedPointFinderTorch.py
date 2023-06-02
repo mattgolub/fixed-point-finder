@@ -18,12 +18,13 @@ Please direct correspondence to mgolub@cs.washington.edu
 import numpy as np
 import time
 from copy import deepcopy
-import absl
 import pdb
+
+import torch
 
 from FixedPointFinderBase import FixedPointFinderBase
 from FixedPoints import FixedPoints
-import torch
+from Timer import Timer
 
 class FixedPointFinderTorch(FixedPointFinderBase):
 
@@ -35,60 +36,9 @@ class FixedPointFinderTorch(FixedPointFinderBase):
 
             See FixedPointFinderBase.py for additional keyword arguments.
         '''
+        self.np_dtype = np.float32
         super().__init__(rnn, **kwargs)
 
-    @staticmethod
-    def compute_q(x, x_1):
-        return  (0.5 * torch.sum(torch.square(x_1 - x), axis=2)).squeeze(0)
-
-    @staticmethod
-    def compute_q_scalar(x, x_1):
-        return  torch.mean(0.5 * torch.sum(torch.square(x_1 - x), axis=2))#.unsqueeze(-1)
-
-
-    def _run_optimization_loop(self, q, x, F_x, inputs, rnn):        
-        x.requires_grad = True
-        optimizer = torch.optim.Adam([x], lr=0.05)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.7)
-
-        # q = self.compute_q(x,F_x)
-        q_prev = torch.zeros(size=[x.shape[1]])
-        q_scalar = 10000
-        iter_count = 0
-        x_traj = []
-        x_traj.append(x.clone())
-
-        # TODO: remove this , just ensures RNN params are frozen
-        # optimizer.param_groups[0]['params'][0].shape
-        rnn.eval()
-        # self.tol_q = 5e-14
-        while True and iter_count < 2000:
-            optimizer.zero_grad()
-            _, F_x = rnn(inputs,x)
-            q = self.compute_q(x,F_x)
-            dq = torch.abs(q - q_prev)
-            q_scalar = self.compute_q_scalar(x,F_x)#torch.mean(q)
-            q_scalar.backward()
-            
-            optimizer.step()
-            scheduler.step()
-        
-            # shows that RNN weights aren't updating
-            # print(torch.mean(rnn.weight_hh_l0), torch.mean(rnn.weight_ih_l0))
-            print("q scalar : ", q_scalar.item(), " iter: ", iter_count)
-
-            if iter_count > 1 and np.all(np.logical_or( dq.detach().numpy() < self.tol_dq,q.detach().numpy() < self.tol_q)): # TODO: add learning rate scale
-                break
-            else: # update q, x
-                x_traj.append(x.clone())
-                q_prev = q.clone()
-                iter_count += 1
-        # remove extra dims
-        xstar, F_xstar, qstar, dq, n_iters, x_traj = x.squeeze(0), F_x.squeeze(0), q, dq, iter_count, torch.vstack(x_traj)
-        n_iters = np.tile(n_iters, reps=F_xstar.shape[0])
-        xstar, F_xstar, qstar = xstar.detach().numpy(), F_xstar.detach().numpy(), qstar.detach().numpy()
-        return xstar, F_xstar, qstar, dq, n_iters, x_traj
-    
     def _run_joint_optimization(self, initial_states, inputs, cond_ids=None):
         '''Finds multiple fixed points via a joint optimization over multiple
         state vectors.
@@ -108,25 +58,100 @@ class FixedPointFinderTorch(FixedPointFinderBase):
             fps: A FixedPoints object containing the optimized fixed points
             and associated metadata.
         '''
+        TIME_DIM = 1 # (batch_first=True)
+
         self._print_if_verbose('\tFinding fixed points '
                             'via joint optimization.')
 
-        x = torch.from_numpy(initial_states).unsqueeze(0).to(torch.float32)
-        F_x = torch.zeros(size=x.shape)
-        q = self.compute_q(x,F_x)
-
-        # A shape [n,] TF Tensor of objectives (one per initial state) to be
-        # combined in _run_optimization_loop.
-        xstar, F_xstar, qstar, dq, n_iters, x_traj  = \
-            self._run_optimization_loop(q,x, F_x, inputs, self.rnn_cell)
+        # Unsqueeze to build in time dimension (a single timestep)
+        x = torch.from_numpy(initial_states).unsqueeze(TIME_DIM).to(torch.float32)
+        inputs = torch.from_numpy(inputs).unsqueeze(TIME_DIM).to(torch.float32)
         
+        x.requires_grad = True
+
+        optimizer = torch.optim.Adam([x], lr=0.05)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=500, gamma=0.7)
+
+        # COPIED FROM FPF-TF
+        iter_count = 1
+        t_start = time.time()
+        q_prev = np.nan
+
+        pdb.set_trace()
+        # To Do: fix input arguments to rnn_cell. In run_FF_torch.py, args are just (inputs)
+        # no previous state.
+
+        while True:
+
+            # iter_learning_rate = adaptive_learning_rate()
+            # iter_clip_val = adaptive_grad_norm_clip()
+            
+            optimizer.zero_grad()
+            _, F_x = self.rnn_cell(inputs,x)
+            q = torch.mean(0.5 * torch.sum(torch.square(x - F_x), axis=2))
+            dq = torch.abs(q - q_prev)
+            q.backward()
+            
+            optimizer.step()
+            scheduler.step()
+
+            ev_q = q.cpu()
+            ev_dq = dq.cpu()
+
+            if self.super_verbose and \
+                np.mod(iter_count, self.n_iters_per_print_update)==0:
+                self._print_update(iter_count, ev_q, ev_dq, iter_learning_rate)
+
+            if iter_count > 1 and \
+                np.all(np.logical_or(
+                    ev_dq < self.tol_dq*iter_learning_rate,
+                    ev_q < self.tol_q)):
+                '''Here dq is scaled by the learning rate. Otherwise very
+                small steps due to very small learning rates would spuriously
+                indicate convergence. This scaling is roughly equivalent to
+                measuring the gradient norm.'''
+                self._print_if_verbose('\tOptimization complete '
+                                       'to desired tolerance.')
+                break
+
+            if iter_count + 1 > self.max_iters:
+                self._print_if_verbose('\tMaximum iteration count reached. '
+                                       'Terminating.')
+                break
+
+            q_prev = ev_q
+            # adaptive_learning_rate.update(ev_q)
+            # adaptive_grad_norm_clip.update(ev_grad_norm)
+            iter_count += 1
+
+        if self.verbose:
+            self._print_update(iter_count, ev_q, ev_dq, iter_learning_rate, is_final=True)
+
+        # remove extra dims
+        inputs = inputs.squeeze(TIME_DIM)
+        inputs = inputs.detach().numpy()
+
+        xstar = x.squeeze(TIME_DIM)
+        xstar = xstar.detach().numpy()
+        
+        F_xstar = F_x.squeeze(TIME_DIM)
+        F_xstar = F_xstar.detach().numpy()
+
+        qstar = qstar.detach().numpy()
+        qstar, dq, n_iters, x_traj = q, dq, iter_count, torch.vstack(x_traj)
+        
+
+        # Indicate same n_iters for each initialization (i.e., joint optimization)        
+        n_iters = np.tile(n_iters, reps=F_xstar.shape[0])
+
+
         # TODO: input shape problem removes sequence dim from inputs 
         if  len(inputs.shape) > 2:
             inputs = inputs[:,0,:]
 
         fps = FixedPoints(
             xstar=xstar,
-            # x_init=tf_utils.maybe_convert_from_LSTMStateTuple(initial_states),
+            x_init=initial_states,
             inputs=inputs,
             cond_id=cond_ids,
             F_xstar=F_xstar,
@@ -137,6 +162,26 @@ class FixedPointFinderTorch(FixedPointFinderBase):
             dtype=self.np_dtype)
 
         return fps
+
+    def _run_single_optimization(self, initial_state, inputs, cond_id=None):
+        '''Finds a single fixed point from a single initial state.
+
+        Args:
+            initial_state: A [1 x n_states] numpy array or an
+            LSTMStateTuple with initial_state.c and initial_state.h as
+            [1 x n_states/2] numpy arrays. These data specify an initial
+            state of the RNN, from which the optimization will search for
+            a single fixed point. The choice of type must be consistent with
+            state type of rnn_cell.
+
+            inputs: A [1 x n_inputs] numpy array specifying the inputs to the
+            RNN for this fixed point optimization.
+
+        Returns:
+            A FixedPoints object containing the optimized fixed point and
+            associated metadata.
+        '''
+        raise NotImplementedError()
 
     def _compute_recurrent_jacobians(self,fps):
         inputs_np = fps.inputs
@@ -197,26 +242,3 @@ class FixedPointFinderTorch(FixedPointFinderBase):
     def rnn_wrapper(self, inputs,states):
         _, h = self.rnn_cell(inputs, states)
         return h
-        
-    def sample_states(self, state_traj, n_inits,valid_bxt=None,noise_scale=0.0):
-        state_traj_bxtxd = state_traj
-
-        [n_batch, n_time, n_states] = state_traj_bxtxd.shape
-
-        valid_bxt = self._get_valid_mask(n_batch, n_time, valid_bxt=valid_bxt)
-        trial_indices, time_indices = self._sample_trial_and_time_indices(
-            valid_bxt, n_inits)
-
-        # Draw random samples from state trajectories
-        states = np.zeros([n_inits, n_states])
-        for init_idx in range(n_inits):
-            trial_idx = trial_indices[init_idx]
-            time_idx = time_indices[init_idx]
-            states[init_idx,:] = state_traj_bxtxd[trial_idx, time_idx]
-            
-        # Add IID Gaussian noise to the sampled states
-        states = self._add_gaussian_noise(states, noise_scale)
-        assert not np.any(np.isnan(states)),\
-            'Detected NaNs in sampled states. Check state_traj and valid_bxt.'
-    
-        return states

@@ -15,12 +15,11 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
-# PATH_TO_FIXED_POINT_FINDER = '../'
-# sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
-# from FlipFlop import FlipFlop
-# from FixedPointFinder import FixedPointFinder
-# from FixedPoints import FixedPoints
-# from plot_utils import plot_fps
+PATH_TO_FIXED_POINT_FINDER = '../'
+sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
+from FixedPointFinderTorch import FixedPointFinderTorch as FixedPointFinder
+from FixedPoints import FixedPoints
+from plot_utils import plot_fps
 
 from FlipFlopData import FlipFlopData
 from torch_utils import get_device
@@ -146,8 +145,8 @@ def main():
 		fig = FlipFlopData.plot_trials(valid_data, pred)
 
 	# Train the model
-	for i in range(30):
-		num_epochs = 10
+	for i in range(1):
+		num_epochs = 2
 		losses, grad_norms = train(model, dataloader, optimizer, loss_fn, num_epochs=num_epochs, disp_every=10)
 		
 		with torch.no_grad():
@@ -157,10 +156,50 @@ def main():
 			FlipFlopData.plot_trials(valid_data, pred, fig=fig)
 
 
-	# model, valid_predictions = train_FlipFlop(train_mode)
+	valid_hidden = valid_hidden.cpu().numpy()
 
 	# STEP 2: Find, analyze, and visualize the fixed points of the trained RNN
-	# find_fixed_points(model, valid_predictions)
+
+	NOISE_SCALE = 0.5 # Standard deviation of noise added to initial states
+	N_INITS = 1024 # The number of initial states to provide
+
+	n_bits = in_size
+
+	'''Fixed point finder hyperparameters. See FixedPointFinder.py for detailed
+	descriptions of available hyperparameters.'''
+	fpf_hps = {}
+
+	# Setup the fixed point finder
+	fpf = FixedPointFinder(model.rnn, **fpf_hps)
+
+	# Study the system in the absence of input pulses (e.g., all inputs are 0)
+	inputs = np.zeros([1,n_bits])
+
+	'''Draw random, noise corrupted samples of those state trajectories
+	to use as initial states for the fixed point optimizations.'''
+	initial_states = fpf.sample_states(valid_hidden,
+		n_inits=N_INITS,
+		noise_scale=NOISE_SCALE)
+
+	# Run the fixed point finder
+	unique_fps, all_fps = fpf.find_fixed_points(initial_states, inputs)
+
+	# Visualize identified fixed points with overlaid RNN state trajectories
+	# All visualized in the 3D PCA space fit the the example RNN states.
+	fig = plot_fps(unique_fps, valid_hidden,
+		plot_batch_idx=list(range(30)),
+		plot_start_time=10)
+
+	model.save_visualizations(figs={'fixed_points': fig})
+
+	print('Entering debug mode to allow interaction with objects and figures.')
+	print('You should see a figure with:')
+	print('\tMany blue lines approximately outlining a cube')
+	print('\tStable fixed points (black dots) at corners of the cube')
+	print('\tUnstable fixed points (red lines or crosses) '
+		'on edges, surfaces and center of the cube')
+	print('Enter q to quit.\n')
+	pdb.set_trace()
 
 if __name__ == '__main__':
 	main()
