@@ -43,6 +43,14 @@ class FlipFlopDataset(Dataset):
 class RNN(nn.Module):
 	def __init__(self, in_size, hidden_size, out_size, nonlinearity='tanh', device='cpu'):
 		super().__init__()
+
+		self.in_size = in_size
+		self.hidden_size = hidden_size
+		self.out_size = out_size
+		self.nonlinearity = nonlinearity
+		self.device = device
+
+		self.initial_hidden_1xd = nn.Parameter(torch.zeros(1, hidden_size, device=device))
 		
 		self.rnn = nn.RNN(in_size, hidden_size, 
 			batch_first=True, 
@@ -53,11 +61,20 @@ class RNN(nn.Module):
 		# 	batch_first=True, 
 		# 	device=device)
 
-		self.decoder = nn.Linear(hidden_size, out_size, device=device)
+		self.readout = nn.Linear(hidden_size, out_size, device=device)
 		
-	def forward(self, x):
-		hiddens_bxtxd, _ = self.rnn(x)        
-		outputs_bxtxd = self.decoder(hiddens_bxtxd)
+	def forward(self, input_bxtxd):
+
+		batch_size = input_bxtxd.shape[0]
+
+		# Expand initial hidden state to match batch size. This creates a new view
+		# without actually creating a new copy of it in memory.
+		initial_hidden_1xbxd = self.initial_hidden_1xd.expand(1, batch_size, self.hidden_size).contiguous()
+		
+		# Pass the input through the RNN layer
+		hiddens_bxtxd, _ = self.rnn(input_bxtxd, initial_hidden_1xbxd)        
+
+		outputs_bxtxd = self.readout(hiddens_bxtxd)
 		return outputs_bxtxd, hiddens_bxtxd
 
 def train(model, dataloader, optimizer, loss_fn, num_epochs=1, disp_every=100, max_norm=1.):
@@ -107,7 +124,7 @@ def main():
 
 	in_size = 3
 	out_size = 3
-	hidden_size = 32
+	hidden_size = 4
 	lr = 1e-2
 
 	n_train = 512
@@ -167,7 +184,7 @@ def main():
 
 	'''Fixed point finder hyperparameters. See FixedPointFinder.py for detailed
 	descriptions of available hyperparameters.'''
-	fpf_hps = {}
+	fpf_hps = {'verbose': True}
 
 	# Setup the fixed point finder
 	fpf = FixedPointFinder(model.rnn, **fpf_hps)

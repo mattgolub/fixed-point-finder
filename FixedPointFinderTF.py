@@ -40,10 +40,10 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
             See FixedPointFinderBase.py for additional keyword arguments.
         '''
+        self.rnn_cell = rnn_cell
         self.session = sess
-        self.tf_dtype = getattr(tf, tf_dtype)
-        self.np_dtype = self.tf_dtype.as_numpy_dtype
         super().__init__(rnn_cell, **kwargs)
+        self.tf_dtype = getattr(tf, self.dtype)
 
     # *************************************************************************
     # Tensorflow Core (these functions will be updated in next major revision)
@@ -331,7 +331,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
             if self.super_verbose and \
                 np.mod(iter_count, self.n_iters_per_print_update)==0:
-                self._print_update(iter_count, ev_q, ev_dq, iter_learning_rate)
+                self._print_iter_update(iter_count, t_start, ev_q, ev_dq, iter_learning_rate)
 
             if iter_count > 1 and \
                 np.all(np.logical_or(
@@ -356,7 +356,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
             iter_count += 1
 
         if self.verbose:
-            self._print_update(iter_count, ev_q, ev_dq, iter_learning_rate, is_final=True)
+            self._print_iter_update(iter_count, t_start, ev_q, ev_dq, iter_learning_rate, is_final=True)
 
         iter_count = np.tile(iter_count, ev_q.shape)
         return ev_x, ev_F, ev_q, ev_dq, iter_count
@@ -375,8 +375,6 @@ class FixedPointFinderTF(FixedPointFinderBase):
             Jacobian of the RNN state transition function at the states
             specified in fps, given the inputs in fps.
 
-            J_tf: The TF op representing the Jacobians.
-
         '''
         inputs_np = fps.inputs
 
@@ -390,7 +388,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
             
         J_np = self.session.run(J_tf)
 
-        return J_np, J_tf
+        return J_np
 
     def _compute_input_jacobians(self, fps):
         ''' Computes the partial derivatives of the RNN state transition
@@ -404,8 +402,6 @@ class FixedPointFinderTF(FixedPointFinderBase):
             J_np: An [n x n_states x n_inputs] numpy array containing the
             partial derivatives of the RNN state transition function at the
             inputs specified in fps, given the states in fps.
-
-            J_tf: The TF op representing the partial derivatives.
         '''
 
         def grab_RNN_for_dFdu(initial_states, inputs):
@@ -438,7 +434,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
         J_np = self.session.run(J_tf)
 
-        return J_np, J_tf
+        return J_np
 
     # *************************************************************************
     # In development: *********************************************************

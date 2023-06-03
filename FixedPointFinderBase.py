@@ -39,10 +39,7 @@ class FixedPointFinderBase(object):
         'max_n_unique': np.inf,
         'do_compute_jacobians': True,
         'do_decompose_jacobians': True,
-
-        # keep as string (rather than tf.float32)
-        # for better argparse handling, yaml writing
-        'tf_dtype': 'float32',
+        'dtype': 'float32',
         'random_seed': 0,
         'verbose': True,
         'super_verbose': False,
@@ -85,7 +82,7 @@ class FixedPointFinderBase(object):
         max_n_unique=_default_hps['max_n_unique'],
         do_compute_jacobians=_default_hps['do_compute_jacobians'],
         do_decompose_jacobians=_default_hps['do_decompose_jacobians'],
-        tf_dtype=_default_hps['tf_dtype'],
+        dtype=_default_hps['dtype'],
         random_seed=_default_hps['random_seed'],
         verbose=_default_hps['verbose'],
         super_verbose=_default_hps['super_verbose'],
@@ -165,10 +162,8 @@ class FixedPointFinderBase(object):
             do_decompose_jacobians (optional): A bool specifying whether or not
             to eigen-decompose each fixed point's Jacobian. Default: True.
 
-            tf_dtype: string indicating the Tensorflow data type to use for
-            all Tensorflow ops and objects. The corresponding numpy data type
-            is used for numpy objects and operations. Default: 'float32' -->
-            tf.float32.
+            dtype: string indicating the data type to use for all numerical ops
+            and objects. Default: 'float32'
 
             random_seed: Seed for numpy random number generator. Default: 0.
 
@@ -201,8 +196,9 @@ class FixedPointFinderBase(object):
             hyperparameter defaults set by AdamOptimizer.
         '''
 
-        self.rnn_cell = rnn_cell
         self.feed_dict = feed_dict
+        self.dtype = dtype
+        self.np_dtype = np.dtype(dtype)
 
         # Make random sequences reproducible
         self.random_seed = random_seed
@@ -447,12 +443,12 @@ class FixedPointFinderBase(object):
 
                 self._print_if_verbose('\tComputing recurrent Jacobian at %d '
                     'unique fixed points.' % unique_fps.n)
-                dFdx, dFdx_tf = self._compute_recurrent_jacobians(unique_fps)
+                dFdx = self._compute_recurrent_jacobians(unique_fps)
                 unique_fps.J_xstar = dFdx
 
                 self._print_if_verbose('\tComputing input Jacobian at %d '
                     'unique fixed points.' % unique_fps.n)
-                dFdu, dFdu_tf = self._compute_input_jacobians(unique_fps)
+                dFdu = self._compute_input_jacobians(unique_fps)
                 unique_fps.dFdu = dFdu
 
             else:
@@ -477,43 +473,6 @@ class FixedPointFinderBase(object):
     # *************************************************************************
     # Helper functions ********************************************************
     # *************************************************************************
-
-    def _print_iter_update(iter_count, q, dq, lr, is_final=False):
-
-        t = time.time()
-        t_elapsed = t - t_start
-        avg_iter_time = t_elapsed / iter_count
-
-        if is_final:
-            delimiter = '\n\t\t'
-            print('\t\t%d iters%s' % (iter_count, delimiter), end='')
-        else:
-            delimiter = ', '
-            print('\tIter: %d%s' % (iter_count, delimiter), end='')
-
-        if q.size == 1:
-            print('q = %.2e%sdq = %.2e%s' %
-                  (q, delimiter, dq, delimiter), end='')
-        else:
-            mean_q = np.mean(q)
-            std_q = np.std(q)
-
-            mean_dq = np.mean(dq)
-            std_dq = np.std(dq)
-
-            print('q = %.2e +/- %.2e%s'
-                  'dq = %.2e +/- %.2e%s' %
-                  (mean_q, std_q, delimiter, mean_dq, std_dq, delimiter),
-                  end='')
-
-        print('learning rate = %.2e%s' % (lr, delimiter), end='')
-
-        print('avg iter time = %.2e sec' % avg_iter_time, end='')
-
-        if is_final:
-            print('') # Just for the endline
-        else:
-            print('.')
 
     def _run_sequential_optimizations(self, initial_states, inputs,
                                       cond_ids=None,
@@ -880,3 +839,41 @@ class FixedPointFinderBase(object):
     def _print_if_verbose(self, *args, **kwargs):
         if self.verbose:
             print(*args, **kwargs)
+
+    @classmethod
+    def _print_iter_update(cls, iter_count, t_start, q, dq, lr, is_final=False):
+
+        t = time.time()
+        t_elapsed = t - t_start
+        avg_iter_time = t_elapsed / iter_count
+
+        if is_final:
+            delimiter = '\n\t\t'
+            print('\t\t%d iters%s' % (iter_count, delimiter), end='')
+        else:
+            delimiter = ', '
+            print('\tIter: %d%s' % (iter_count, delimiter), end='')
+
+        if q.size == 1:
+            print('q = %.2e%sdq = %.2e%s' %
+                  (q, delimiter, dq, delimiter), end='')
+        else:
+            mean_q = np.mean(q)
+            std_q = np.std(q)
+
+            mean_dq = np.mean(dq)
+            std_dq = np.std(dq)
+
+            print('q = %.2e +/- %.2e%s'
+                  'dq = %.2e +/- %.2e%s' %
+                  (mean_q, std_q, delimiter, mean_dq, std_dq, delimiter),
+                  end='')
+
+        print('learning rate = %.2e%s' % (lr, delimiter), end='')
+
+        print('avg iter time = %.2e sec' % avg_iter_time, end='')
+
+        if is_final:
+            print('') # Just for the endline
+        else:
+            print('.')
