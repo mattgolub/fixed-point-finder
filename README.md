@@ -1,6 +1,10 @@
-# FixedPointFinder - A Tensorflow toolbox for finding fixed points and linearized dynamics in recurrent neural networks [Pytorch version coming soon!]
+# FixedPointFinder - A Tensorflow toolbox for finding fixed points and linearized dynamics in recurrent neural networks 
+
+# [Pytorch version coming soon!]
 
 Finds and analyzes the fixed points of recurrent neural networks that have been built using Tensorflow.
+
+A version for Pytorch is in active development and will be ready by mid June 2023.
 
 **If you are using FixedPointFinder in research to be published, please cite our accompanying paper in your publication:**
 
