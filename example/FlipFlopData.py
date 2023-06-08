@@ -12,22 +12,62 @@ import numpy.random as npr
 import matplotlib.pyplot as plt
 
 class FlipFlopData(object):
-	def __init__(self, n_batch=512, n_time=64, n_bits=3, p_flip=0.5, random_seed=0):
+
+	def __init__(self, 
+		n_bits=3,
+		n_time=64,
+		p=0.5, 
+		random_seed=0):
+		''' Creates a FlipFlopData object.
+
+		Args:
+			n_bits: Non-negative integer. Specifies the number of channels in
+			the flip flop memory. Default: 3
+
+			n_time: Non-negative integer. Specifies the number of timesteps per
+			trial. Default: 64.
+
+			p: float in [0, 1]. Specifies the probability of a non-zero input
+			pulse at each timestep. Non-zero inputs are set to either +1 or -1,
+			with equal probability.
+
+		Returns:
+			None.
+
+		'''
 
 		self.rng = npr.RandomState(random_seed)
 		self.n_time = n_time
 		self.n_bits = n_bits
-		self.p_flip = p_flip
+		self.p = p
 
 	def generate_data(self, n_trials):
+		''' Generates trial data for training, testing, or validating a FlipFlop
+		memory device.
+
+		Args:
+			n_trials: Non-negative integer. Specifies the number of trials to 
+			generate.
+
+		Returns:
+			Dict containing keys:
+				'inputs': A (n_trials, n_time, n_bits) Numpy array containing
+				the input sequences.
+
+				'targets': A (n_trials, n_time, n_bits) Numpy array containing
+				the target output sequences.
+
+				A function, F, that perfectly solves the flip flop memory task 
+				will satisfy: F(inputs[i]) = targets[i], for all trials i.
+		'''
 
 		n_time = self.n_time
 		n_bits = self.n_bits
-		p_flip = self.p_flip
+		p = self.p
 
 		# Randomly generate unsigned input pulses
 		unsigned_inputs = self.rng.binomial(
-			1, p_flip, [n_trials, n_time, n_bits])
+			1, p, [n_trials, n_time, n_bits])
 
 		# Ensure every trial is initialized with a pulse at time 0
 		unsigned_inputs[:, 0, :] = 1
@@ -63,8 +103,8 @@ class FlipFlopData(object):
 	def plot_trials(cls, data, pred, start_time=0, stop_time=None, 
 		n_trials_plot=1,
 		fig=None):
-		'''Plots example trials, complete with input pulses, correct outputs,
-		and RNN-predicted outputs.
+		'''Plots example trials, complete with input pulses, correct target
+		outputs, and RNN-predicted outputs.
 
 		Args:
 			data: dict as returned by generate_data.
@@ -109,7 +149,7 @@ class FlipFlopData(object):
 				plt.title('Example trial %d' % (trial_idx + 1),
 						  fontweight='bold')
 
-			cls.plot_single_trial(
+			cls._plot_single_trial(
 				inputs[trial_idx, time_idx, :],
 				targets[trial_idx, time_idx, :],
 				pred_output[trial_idx, time_idx, :])
@@ -125,7 +165,10 @@ class FlipFlopData(object):
 		return fig
 
 	@classmethod
-	def plot_single_trial(cls, input_txd, output_txd, pred_output_txd):
+	def _plot_single_trial(cls, input_txd, output_txd, pred_output_txd):
+		''' Plots a single example trial, complete with input pulses, correct 
+		target outputs, and RNN-predicted outputs.
+		'''
 
 		VERTICAL_SPACING = 2.5
 		[n_time, n_bits] = input_txd.shape

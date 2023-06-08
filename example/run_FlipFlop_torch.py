@@ -1,13 +1,12 @@
 '''
 run_flipflop_torch.py
-Written for Python 3.6.9 and Pytorch (version?)
+Written for Python 3.6.9 and Pytorch (1.12.1)
 @ Matt Golub, June 2023
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import pdb
 import sys
-import argparse
 import numpy as np
 
 import torch
@@ -115,12 +114,6 @@ def train(model, dataloader, optimizer, loss_fn, num_epochs=1, disp_every=100, m
 	return losses, grad_norms
 
 def main():
-
-	parser = argparse.ArgumentParser(
-		description='FixedPointFinder: Flip Flop example')
-	parser.add_argument('--train_mode', default=1, type=int)
-	args = vars(parser.parse_args())
-	train_mode = args['train_mode']
 
 	in_size = 3
 	out_size = 3
