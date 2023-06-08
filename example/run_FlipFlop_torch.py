@@ -124,7 +124,7 @@ def main():
 
 	in_size = 3
 	out_size = 3
-	hidden_size = 4
+	hidden_size = 16
 	lr = 1e-2
 
 	n_train = 512
@@ -162,9 +162,10 @@ def main():
 		fig = FlipFlopData.plot_trials(valid_data, pred)
 
 	# Train the model
-	for i in range(1):
+	for i in range(5):
+		plot_every = 10
 		num_epochs = 2
-		losses, grad_norms = train(model, dataloader, optimizer, loss_fn, num_epochs=num_epochs, disp_every=10)
+		losses, grad_norms = train(model, dataloader, optimizer, loss_fn, num_epochs=plot_every, disp_every=10)
 		
 		with torch.no_grad():
 			valid_inputs, valid_targets = valid_dataset[:n_valid]
@@ -184,7 +185,7 @@ def main():
 
 	'''Fixed point finder hyperparameters. See FixedPointFinder.py for detailed
 	descriptions of available hyperparameters.'''
-	fpf_hps = {'verbose': True}
+	fpf_hps = {'verbose': True, 'super_verbose': True}
 
 	# Setup the fixed point finder
 	fpf = FixedPointFinder(model.rnn, **fpf_hps)
@@ -206,8 +207,6 @@ def main():
 	fig = plot_fps(unique_fps, valid_hidden,
 		plot_batch_idx=list(range(30)),
 		plot_start_time=10)
-
-	model.save_visualizations(figs={'fixed_points': fig})
 
 	print('Entering debug mode to allow interaction with objects and figures.')
 	print('You should see a figure with:')

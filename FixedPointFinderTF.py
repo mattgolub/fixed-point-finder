@@ -31,19 +31,78 @@ from Timer import Timer
 
 class FixedPointFinderTF(FixedPointFinderBase):
 
-    def __init__(self,rnn_cell, sess, **kwargs):
+    _default_hps = {
+        'feed_dict': {},
+        'alr_hps': {}, # Note: ALR's termination criteria not currently used.
+        'agnc_hps': {},
+        'adam_hps': {'epsilon': 0.01},
+        }
+
+    @classmethod
+    def default_hps(cls):
+        ''' Returns a deep copy of the default hyperparameters dict.
+
+        The deep copy protects against external updates to the defaults, which
+        in turn protects against unintended interactions with the hashing done
+        by the Hyperparameters class.
+
+        Args:
+            None.
+
+        Returns:
+            dict of hyperparameters.
+
+
+        '''
+        hps = super().default_hps()
+        hps.update(cls._default_hps)
+        return deepcopy(hps)
+
+    def __init__(self,rnn_cell, sess, 
+        feed_dict=_default_hps['feed_dict'],
+        alr_hps=_default_hps['alr_hps'],
+        agnc_hps=_default_hps['agnc_hps'],
+        adam_hps=_default_hps['adam_hps']
+        **kwargs):
         '''Creates a FixedPointFinder object.
 
         Args:
             rnn_cell: A Tensorflow RNN cell, which has been initialized or
             restored in the Tensorflow session, 'sess'.
 
+            sess: The Tensorflow session within which rnn_cell has been 
+            initialized.
+
+            feed_dict: A dict containing any TF data the must be fed to rnn_cell
+            to evaluate its graph. Default: {}
+
+            alr_hps (optional): A dict containing hyperparameters governing
+            an adaptive learning rate. Default: Set by AdaptiveLearningRate.
+            See AdaptiveLearningRate.py for more information on these
+            hyperparameters and their default values. NOTE: although
+            AdaptiveLearningRate can manage termination criteria, this
+            functionality is not currently used by FixedPointFinder.
+
+            agnc_hps (optional): A dict containing hyperparameters governing
+            an adaptive gradient norm clipper. Default: Set by
+            AdaptiveGradientNormClip. See AdaptiveGradientNormClip.py
+            for more information on these hyperparameters and their default
+            values.
+
+            adam_hps (optional): A dict containing hyperparameters governing
+            Tensorflow's Adam Optimizer. Default: 'epsilon'=0.01, all other
+            hyperparameter defaults set by AdamOptimizer.
+
             See FixedPointFinderBase.py for additional keyword arguments.
         '''
         self.rnn_cell = rnn_cell
         self.session = sess
-        super().__init__(rnn_cell, **kwargs)
+        self.feed_dict = feed_dict
+        self.adaptive_learning_rate_hps = alr_hps
+        self.grad_norm_clip_hps = agnc_hps
+        self.adam_optimizer_hps = adam_hps
         self.tf_dtype = getattr(tf, self.dtype)
+        super().__init__(rnn_cell, **kwargs)
 
     # *************************************************************************
     # Tensorflow Core (these functions will be updated in next major revision)
@@ -56,30 +115,21 @@ class FixedPointFinderTF(FixedPointFinderBase):
         not done here).
 
         Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n x n_states/2] numpy arrays. These data specify the initial
+            initial_states: An [n x n_states] numpy array specifying the initial
             states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
+            fixed points.
 
         Returns:
             x: An [n x n_states] tf.Variable (the optimization variable)
             representing RNN states, initialized to the values in
             initial_states. If the RNN is an LSTM, n_states represents the
             concatenated hidden and cell states.
-
-            x_rnncell: A potentially reformatted variant of x that serves as
-            the second argument to self.rnn_cell. If rnn_cell is an LSTM,
-            x_rnncell is formatted as an LSTMStateTuple. Otherwise, it's just
-            a reference to x.
         '''
 
 
         x = tf.Variable(initial_states, dtype=self.tf_dtype)
-        x_rnncell = x
 
-        return x, x_rnncell
+        return x
 
     def _grab_RNN(self, initial_states, inputs):
         '''Creates objects for interfacing with the RNN.
@@ -90,12 +140,9 @@ class FixedPointFinderTF(FixedPointFinderBase):
         variables that are required for building the TF graph.
 
         Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n x n_states/2] numpy arrays. These data specify the initial
+            initial_states: An [n x n_states] numpy array specifying the initial
             states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
+            fixed points.
 
             inputs: A [n x n_inputs] numpy array specifying the inputs to the
             RNN for this fixed point optimization.
@@ -103,18 +150,17 @@ class FixedPointFinderTF(FixedPointFinderBase):
         Returns:
             x: An [n x n_states] tf.Variable (the optimization variable)
             representing RNN states, initialized to the values in
-            initial_states. If the RNN is an LSTM, n_states represents the
-            concatenated hidden and cell states.
+            initial_states.
 
             F: An [n x n_states] tf op representing the state transition
             function of the RNN applied to x.
         '''
 
-        x, x_rnncell = self._build_state_vars(initial_states)
+        x = self._build_state_vars(initial_states)
 
         inputs_tf = tf.constant(inputs, dtype=self.tf_dtype)
 
-        output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
+        output, F_rnncell = self.rnn_cell(inputs_tf, x)
 
         F = F_rnncell
 
@@ -128,12 +174,9 @@ class FixedPointFinderTF(FixedPointFinderBase):
         state vectors.
 
         Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_states] numpy arrays. These data specify the initial
+            initial_states: An [n x n_states] numpy array specifying the initial
             states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
+            fixed points.
 
             inputs: A [n x n_inputs] numpy array specifying a set of constant
             inputs into the RNN.
@@ -174,12 +217,9 @@ class FixedPointFinderTF(FixedPointFinderBase):
         '''Finds a single fixed point from a single initial state.
 
         Args:
-            initial_state: A [1 x n_states] numpy array or an
-            LSTMStateTuple with initial_state.c and initial_state.h as
-            [1 x n_states/2] numpy arrays. These data specify an initial
+            initial_state: A [1 x n_states] numpy array specifying an initial
             state of the RNN, from which the optimization will search for
-            a single fixed point. The choice of type must be consistent with
-            state type of rnn_cell.
+            a single fixed point. 
 
             inputs: A [1 x n_inputs] numpy array specifying the inputs to the
             RNN for this fixed point optimization.
@@ -356,7 +396,9 @@ class FixedPointFinderTF(FixedPointFinderBase):
             iter_count += 1
 
         if self.verbose:
-            self._print_iter_update(iter_count, t_start, ev_q, ev_dq, iter_learning_rate, is_final=True)
+            self._print_iter_update(
+                iter_count, t_start, ev_q, ev_dq, iter_learning_rate, 
+                is_final=True)
 
         iter_count = np.tile(iter_count, ev_q.shape)
         return ev_x, ev_F, ev_q, ev_dq, iter_count
@@ -392,7 +434,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
     def _compute_input_jacobians(self, fps):
         ''' Computes the partial derivatives of the RNN state transition
-        function with respect to the RNN's inputs.
+        function with respect to the RNN's inputs, assuming fixed hidden states.
 
         Args:
             fps: A FixedPoints object containing the RNN states (fps.xstar)
@@ -408,12 +450,12 @@ class FixedPointFinderTF(FixedPointFinderBase):
             # Modified variant of _grab_RNN(), repurposed for dFdu
 
             # Same as in _grab_RNN()
-            x, x_rnncell = self._build_state_vars(initial_states)
+            x = self._build_state_vars(initial_states)
 
             # Different from _grab_RNN(), which builds inputs as tf.constant
             inputs_tf = tf.Variable(inputs, dtype=self.tf_dtype)
 
-            output, F_rnncell = self.rnn_cell(inputs_tf, x_rnncell)
+            output, F_rnncell = self.rnn_cell(inputs_tf, x)
 
             F = F_rnncell
 
@@ -434,7 +476,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
         J_np = self.session.run(J_tf)
 
-        return J_np
+        return J_np, J_tf
 
     # *************************************************************************
     # In development: *********************************************************

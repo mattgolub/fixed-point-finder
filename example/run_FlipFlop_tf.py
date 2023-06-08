@@ -47,7 +47,7 @@ def train_FlipFlop(train_mode):
     # Hyperparameters for FlipFlop
     # See FlipFlop.py for detailed descriptions.
     hps = {
-            'rnn_type': 'lstm',
+            'rnn_type': 'gru',
             'n_hidden': 16,
             'min_loss': 1e-4,
             'log_dir': './logs/',

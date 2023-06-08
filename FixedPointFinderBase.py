@@ -1,6 +1,6 @@
 '''
 FixedPointFinderBase
-Written for Python 3.6.9 and TensorFlow 2.8.0
+Written for Python 3.6.9
 @ Matt Golub, 2018-2023.
 
 If you are using FixedPointFinder in research to be published, 
@@ -17,16 +17,12 @@ Please direct correspondence to mgolub@cs.washington.edu
 import numpy as np
 import time
 from copy import deepcopy
-import pdb
 
 from FixedPoints import FixedPoints
-# from AdaptiveLearningRate import AdaptiveLearningRate
-# from AdaptiveGradNormClip import AdaptiveGradNormClip
 
 class FixedPointFinderBase(object):
 
     _default_hps = {
-        'feed_dict': {},
         'tol_q': 1e-12,
         'tol_dq': 1e-20,
         'max_iters': 5000,
@@ -44,13 +40,10 @@ class FixedPointFinderBase(object):
         'verbose': True,
         'super_verbose': False,
         'n_iters_per_print_update': 100,
-        'alr_hps': {}, # Note: ALR's termination criteria not currently used.
-        'agnc_hps': {},
-        'adam_hps': {'epsilon': 0.01},
         }
 
-    @staticmethod
-    def default_hps():
+    @classmethod
+    def default_hps(cls):
         ''' Returns a deep copy of the default hyperparameters dict.
 
         The deep copy protects against external updates to the defaults, which
@@ -65,10 +58,9 @@ class FixedPointFinderBase(object):
 
 
         '''
-        return deepcopy(FixedPointFinder._default_hps)
+        return deepcopy(cls._default_hps)
 
     def __init__(self, rnn_cell,
-        feed_dict=_default_hps['feed_dict'],
         tol_q=_default_hps['tol_q'],
         tol_dq=_default_hps['tol_dq'],
         max_iters=_default_hps['max_iters'],
@@ -86,10 +78,7 @@ class FixedPointFinderBase(object):
         random_seed=_default_hps['random_seed'],
         verbose=_default_hps['verbose'],
         super_verbose=_default_hps['super_verbose'],
-        n_iters_per_print_update=_default_hps['n_iters_per_print_update'],
-        alr_hps=_default_hps['alr_hps'],
-        agnc_hps=_default_hps['agnc_hps'],
-        adam_hps=_default_hps['adam_hps']):
+        n_iters_per_print_update=_default_hps['n_iters_per_print_update']):
         '''Creates a FixedPointFinder object.
 
         Optimization terminates once every initialization satisfies one or
@@ -177,33 +166,14 @@ class FixedPointFinderBase(object):
             n_iters_per_print_update (optional): An int specifying how often
             to print updates during the fixed point optimizations. Default:
             100.
-
-            alr_hps (optional): A dict containing hyperparameters governing
-            an adaptive learning rate. Default: Set by AdaptiveLearningRate.
-            See AdaptiveLearningRate.py for more information on these
-            hyperparameters and their default values. NOTE: although
-            AdaptiveLearningRate can manage termination criteria, this
-            functionality is not currently used by FixedPointFinder.
-
-            agnc_hps (optional): A dict containing hyperparameters governing
-            an adaptive gradient norm clipper. Default: Set by
-            AdaptiveGradientNormClip. See AdaptiveGradientNormClip.py
-            for more information on these hyperparameters and their default
-            values.
-
-            adam_hps (optional): A dict containing hyperparameters governing
-            Tensorflow's Adam Optimizer. Default: 'epsilon'=0.01, all other
-            hyperparameter defaults set by AdamOptimizer.
         '''
 
-        self.feed_dict = feed_dict
         self.dtype = dtype
         self.np_dtype = np.dtype(dtype)
 
         # Make random sequences reproducible
         self.random_seed = random_seed
         self.rng = np.random.RandomState(random_seed)
-
 
         # *********************************************************************
         # Optimization hyperparameters ****************************************
@@ -225,10 +195,6 @@ class FixedPointFinderBase(object):
         self.super_verbose = super_verbose
         self.n_iters_per_print_update = n_iters_per_print_update
 
-        self.adaptive_learning_rate_hps = alr_hps
-        self.grad_norm_clip_hps = agnc_hps
-        self.adam_optimizer_hps = adam_hps
-
     # *************************************************************************
     # Primary exposed functions ***********************************************
     # *************************************************************************
@@ -246,9 +212,8 @@ class FixedPointFinderBase(object):
             inputs: [n_batch x n_time x n_inputs] numpy array containing input
             sequences to the RNN.
 
-            state_traj: [n_batch x n_time x n_states] numpy array or
-            LSTMStateTuple with .c and .h as [n_batch x n_time x n_states]
-            numpy arrays. Contains state trajectories of the RNN, given inputs.
+            state_traj: [n_batch x n_time x n_states] numpy array containing
+            trajectories of the RNN hidden state, given inputs.
 
             n_inits: int specifying the number of sampled states to return.
 
@@ -265,10 +230,8 @@ class FixedPointFinderBase(object):
             inputs: Sampled RNN inputs as a [n_inits x n_inputs] numpy array.
             These are paired with the states in initial_states (below).
 
-            initial_states: Sampled RNN states as a [n_inits x n_states] numpy
-            array or as an LSTMStateTuple with .c and .h as
-            [n_inits x n_states] numpy arrays (type matches that of
-            state_traj).
+            initial_states: Sampled RNN states as an [n_inits x n_states] numpy
+            array.
 
         Raises:
             ValueError if noise_scale is negative.
@@ -310,9 +273,8 @@ class FixedPointFinderBase(object):
         states for fixed point optimizations.
 
         Args:
-            state_traj: [n_batch x n_time x n_states] numpy array or
-            LSTMStateTuple with .c and .h as [n_batch x n_time x n_states]
-            numpy arrays. Contains example trajectories of the RNN state.
+            state_traj: [n_batch x n_time x n_states] numpy array containing
+            example trajectories of the RNN state.
 
             n_inits: int specifying the number of sampled states to return.
 
@@ -326,8 +288,7 @@ class FixedPointFinderBase(object):
 
         Returns:
             initial_states: Sampled RNN states as a [n_inits x n_states] numpy
-            array or as an LSTMStateTuple with .c and .h as [n_inits x
-            n_states] numpy arrays (type matches than of state_traj).
+            array.
 
         Raises:
             ValueError if noise_scale is negative.
@@ -360,12 +321,9 @@ class FixedPointFinderBase(object):
         '''Finds RNN fixed points and the Jacobians at the fixed points.
 
         Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n x n_states] numpy arrays. These data specify the initial
+            initial_states: An [n x n_states] numpy array specifying the initial
             states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
+            fixed points.
 
             inputs: Either a [1 x n_inputs] numpy array specifying a set of
             constant inputs into the RNN to be used for all optimization
@@ -471,6 +429,80 @@ class FixedPointFinderBase(object):
         return unique_fps, all_fps
 
     # *************************************************************************
+    # API functions, implemented by Pytorch and TF subclasses *****************
+    # *************************************************************************
+
+    def _run_joint_optimization(self, initial_states, inputs, cond_ids=None):
+        '''Finds multiple fixed points via a joint optimization over multiple
+        state vectors.
+
+        Args:
+            initial_states: An [n x n_states] numpy array specifying the initial
+            states of the RNN, from which the optimization will search for
+            fixed points.
+
+            inputs: A [n x n_inputs] numpy array specifying a set of constant
+            inputs into the RNN.
+
+        Returns:
+            fps: A FixedPoints object containing the optimized fixed points
+            and associated metadata.
+        '''
+
+        raise NotImplementedError
+
+    def _run_single_optimization(self, initial_state, inputs, cond_id=None):
+        '''Finds a single fixed point from a single initial state.
+
+        Args:
+            initial_state: A [1 x n_states] numpy array specifying an initial
+            state of the RNN, from which the optimization will search for
+            a single fixed point. 
+
+            inputs: A [1 x n_inputs] numpy array specifying the inputs to the
+            RNN for this fixed point optimization.
+
+        Returns:
+            A FixedPoints object containing the optimized fixed point and
+            associated metadata.
+        '''
+
+        raise NotImplementedError
+
+    def _compute_recurrent_jacobians(self, fps):
+        '''Computes the Jacobian of the RNN state transition function () 
+        at the specified fixed points (i.e., dF/dx, partial derivatives with 
+        respect to the hidden states) assuming constant inputs.
+
+        Args:
+            fps: A FixedPoints object containing the RNN states (fps.xstar)
+            and inputs (fps.inputs) at which to compute the Jacobians.
+
+        Returns:
+            J_np: An [n x n_states x n_states] numpy array containing the
+            Jacobian of the RNN state transition function at the states
+            specified in fps, given the inputs in fps.
+        '''
+
+        raise NotImplementedError
+
+    def _compute_input_jacobians(self, fps):
+        ''' Computes the partial derivatives of the RNN state transition
+        function with respect to the RNN's inputs, assuming fixed hidden states.
+
+        Args:
+            fps: A FixedPoints object containing the RNN states (fps.xstar)
+            and inputs (fps.inputs) at which to compute the Jacobians.
+
+        Returns:
+            J_np: An [n x n_states x n_inputs] numpy array containing the
+            partial derivatives of the RNN state transition function at the
+            inputs specified in fps, given the states in fps.
+        '''
+
+        raise NotImplementedError
+
+    # *************************************************************************
     # Helper functions ********************************************************
     # *************************************************************************
 
@@ -481,12 +513,9 @@ class FixedPointFinderBase(object):
         initial state at a time.
 
         Args:
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_states] numpy arrays. These data specify the initial
+            initial_states: An [n x n_states] numpy array specifying the initial
             states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
+            fixed points.
 
             inputs: An [n x n_inputs] numpy array specifying a set of constant
             inputs into the RNN.
@@ -677,12 +706,9 @@ class FixedPointFinderBase(object):
             fps: A FixedPoints object containing optimized fixed points and
             associated metadata.
 
-            initial_states: Either an [n x n_states] numpy array or an
-            LSTMStateTuple with initial_states.c and initial_states.h as
-            [n_inits x n_states] numpy arrays. These data specify the initial
+            initial_states: An [n x n_states] numpy array specifying the initial
             states of the RNN, from which the optimization will search for
-            fixed points. The choice of type must be consistent with state
-            type of rnn_cell.
+            fixed points.
 
             dist_thresh: A scalar float indicating the threshold of fixed
             points' normalized distance from the centroid of the
