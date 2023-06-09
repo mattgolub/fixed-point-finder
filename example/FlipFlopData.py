@@ -41,13 +41,15 @@ class FlipFlopData(object):
 		self.n_bits = n_bits
 		self.p = p
 
-	def generate_data(self, n_trials):
+	def generate_data(self, n_trials, dtype=np.float32):
 		''' Generates trial data for training, testing, or validating a FlipFlop
 		memory device.
 
 		Args:
 			n_trials: Non-negative integer. Specifies the number of trials to 
 			generate.
+
+			dtype: Numpy datatype for the generated data. Default: np.float32.
 
 		Returns:
 			Dict containing keys:
@@ -97,7 +99,10 @@ class FlipFlopData(object):
 					targets[trial_idx, t_flip_i:, bit_idx] = \
 						inputs[trial_idx, t_flip_i, bit_idx]
 
-		return {'inputs': inputs, 'targets': targets}
+		return {
+			'inputs': inputs.astype(np.float32),
+			'targets': targets.astype(np.float32)
+			}
 
 	@classmethod
 	def plot_trials(cls, data, pred, start_time=0, stop_time=None, 

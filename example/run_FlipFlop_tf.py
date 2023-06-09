@@ -12,9 +12,8 @@ import numpy as np
 
 PATH_TO_FIXED_POINT_FINDER = '../'
 sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
-from FlipFlop import FlipFlop
+from FlipFlop_tf import FlipFlop
 from FixedPointFinder import FixedPointFinder
-from FixedPoints import FixedPoints
 from plot_utils import plot_fps
 
 def train_FlipFlop(train_mode):
@@ -57,7 +56,7 @@ def train_FlipFlop(train_mode):
                 'n_batch': 512,
                 'n_time': 64,
                 'n_bits': 3,
-                'p_flip': 0.5
+                'p': 0.5
                 },
 
             # Hyperparameters for AdaptiveLearningRate
@@ -129,7 +128,7 @@ def find_fixed_points(model, valid_predictions):
     fpf = FixedPointFinder(model.rnn_cell, model.session, **fpf_hps)
 
     # Study the system in the absence of input pulses (e.g., all inputs are 0)
-    inputs = np.zeros([1,n_bits])
+    inputs = np.zeros([1, n_bits])
 
     '''Draw random, noise corrupted samples of those state trajectories
     to use as initial states for the fixed point optimizations.'''
