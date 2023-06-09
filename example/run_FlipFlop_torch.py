@@ -111,6 +111,7 @@ def find_fixed_points(model, valid_predictions):
 		'on edges, surfaces and center of the cube')
 	print('Enter q to quit.\n')
 	pdb.set_trace()
+	
 def main():
 
 	# Step 1: Train an RNN to solve the N-bit memory task
