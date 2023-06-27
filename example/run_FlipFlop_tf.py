@@ -147,15 +147,6 @@ def find_fixed_points(model, valid_predictions):
 
     model.save_visualizations(figs={'fixed_points': fig})
 
-    print('Entering debug mode to allow interaction with objects and figures.')
-    print('You should see a figure with:')
-    print('\tMany blue lines approximately outlining a cube')
-    print('\tStable fixed points (black dots) at corners of the cube')
-    print('\tUnstable fixed points (red lines or crosses) '
-        'on edges, surfaces and center of the cube')
-    print('Enter q to quit.\n')
-    pdb.set_trace()
-
 def main():
 
     parser = argparse.ArgumentParser(
@@ -169,6 +160,15 @@ def main():
 
     # STEP 2: Find, analyze, and visualize the fixed points of the trained RNN
     find_fixed_points(model, valid_predictions)
+
+    print('Entering debug mode to allow interaction with objects and figures.')
+    print('You should see a figure with:')
+    print('\tMany blue lines approximately outlining a cube')
+    print('\tStable fixed points (black dots) at corners of the cube')
+    print('\tUnstable fixed points (red lines or crosses) '
+        'on edges, surfaces and center of the cube')
+    print('Enter q to quit.\n')
+    pdb.set_trace()
 
 if __name__ == '__main__':
     main()
