@@ -2,8 +2,8 @@
 FixedPoints Class
 Supports FixedPointFinder
 
-Written for Python 3.6.9 and TensorFlow 1.14
-@ Matt Golub, October 2018.
+Written for Python 3.6.9
+@ Matt Golub, October 2018
 
 If you are using FixedPointFinder in research to be published, 
 please cite our accompanying paper in your publication:
@@ -13,7 +13,7 @@ identifying and characterizing fixed points in recurrent neural networks,"
 Journal of Open Source Software, 3(31), 1003.
 https://doi.org/10.21105/joss.01003
 
-Please direct correspondence to mgolub@stanford.edu.
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import pdb
@@ -391,7 +391,7 @@ class FixedPoints(object):
             data_nxd = np.concatenate((self.xstar, self.inputs), axis=1)
 
         idx_keep = []
-        idx_checked = np.zeros(self.n, dtype=np.bool)
+        idx_checked = np.zeros(self.n, dtype=bool)
         for idx in range(self.n):
 
             if idx_checked[idx]:
@@ -608,7 +608,7 @@ class FixedPoints(object):
             self._alloc_nan((n, n_states), dtype=self.dtype_complex)
         self.eigvec_J_xstar = \
             self._alloc_nan((n, n_states, n_states), dtype=self.dtype_complex)
-        self.is_stable = np.zeros(n, dtype=np.bool)
+        self.is_stable = np.zeros(n, dtype=bool)
 
         for k in range(n):
             sort_idx_k = sort_idx[k]

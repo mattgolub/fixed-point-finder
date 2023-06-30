@@ -1,13 +1,18 @@
 '''
 Tensorflow Utilities
 Supports FixedPointFinder
-Written for Python 3.6.9 and TensorFlow 1.14
-@ Matt Golub, October 2018.
-Please direct correspondence to mgolub@stanford.edu.
+Written for Python 3.6.9 and TensorFlow 2.8.0
+@ Matt Golub, October 2018
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
+import pdb
 import numpy as np
+
 import tensorflow as tf
+tf1 = tf.compat.v1
+tf1.disable_eager_execution()
+# tf1.disable_v2_behavior()
 
 '''
 These utility functions are primarily for robustly managing TFs different
@@ -70,7 +75,7 @@ def convert_to_LSTMStateTuple(x):
     else:
         raise ValueError('x must be rank 2 or 3, but was rank %d' % rank)
 
-    return tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
+    return tf1.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
 
 def unroll_LSTM(lstm_cell, inputs, initial_state):
     ''' Unroll an LSTM.
@@ -98,7 +103,7 @@ def unroll_LSTM(lstm_cell, inputs, initial_state):
 
     ''' Add ops to the graph for getting the complete LSTM state
     (i.e., hidden and cell) at every timestep.'''
-    n_time = inputs.shape[1].value
+    n_time = inputs.shape[1]
     hidden_list = []
     cell_list = []
 
@@ -117,7 +122,7 @@ def unroll_LSTM(lstm_cell, inputs, initial_state):
     c = tf.stack(cell_list, axis=1)
     h = tf.stack(hidden_list, axis=1)
 
-    return tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
+    return tf1.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
 
 def is_tf_object(x):
     '''Determine whether x is a Tensorflow object.
@@ -129,7 +134,7 @@ def is_tf_object(x):
         A bool indicating whether x is any type of TF object (e.g.,
         tf.Variable, tf.Tensor, tf.placeholder, or any TF op)
     '''
-    return tf.is_numeric_tensor(x) or isinstance(x, tf.Variable)
+    return tf.debugging.is_numeric_tensor(x) or isinstance(x, tf.Variable)
 
 def is_lstm(x):
     '''Determine whether x is an LSTMCell or any object derived from one.
@@ -141,10 +146,10 @@ def is_lstm(x):
         A bool indicating whether x is an LSTMCell or any object derived from
         one.
     '''
-    if isinstance(x, tf.nn.rnn_cell.LSTMCell):
+    if isinstance(x, tf1.nn.rnn_cell.LSTMCell):
         return True
 
-    if isinstance(x, tf.nn.rnn_cell.LSTMStateTuple):
+    if isinstance(x, tf1.nn.rnn_cell.LSTMStateTuple):
         return True
 
     return False
@@ -202,7 +207,7 @@ def safe_index(states, index):
     if is_lstm(states):
         c = states.c[index]
         h = states.h[index]
-        return tf.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
+        return tf1.nn.rnn_cell.LSTMStateTuple(c=c, h=h)
     else:
         return states[index]
 
@@ -218,7 +223,7 @@ def safe_concat(states):
        passes of a bidirectional RNN.
     '''
 
-    if isinstance(states, tf.nn.rnn_cell.LSTMStateTuple):
+    if isinstance(states, tf1.nn.rnn_cell.LSTMStateTuple):
         return convert_from_LSTMStateTuple(states)
     elif isinstance(states, tuple) or isinstance(states, list):
         return tf.concat(

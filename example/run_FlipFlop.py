@@ -1,8 +1,8 @@
 '''
 run_flipflop.py
-Written for Python 3.6.9 and TensorFlow 1.14
-@ Matt Golub, October 2018.
-Please direct correspondence to mgolub@stanford.edu.
+Written for Python 3.6.9 and TensorFlow 2.8.0
+@ Matt Golub, October 2018
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import pdb
@@ -68,6 +68,7 @@ def train_FlipFlop(train_mode):
             }
 
     model = FlipFlop(**hps)
+
     train_data = model.generate_data()
     valid_data = model.generate_data()
 
@@ -77,7 +78,7 @@ def train_FlipFlop(train_mode):
         # This runs much faster at the expense of overfitting potential
         model.train(train_data)
     elif train_mode == 3:
-        # This requires some changes to hps to fully leverage validation)
+        # This requires some changes to hps to fully leverage validation
         model.train(train_data, valid_data)
 
     # Get example state trajectories from the network
@@ -142,9 +143,11 @@ def find_fixed_points(model, valid_predictions):
 
     # Visualize identified fixed points with overlaid RNN state trajectories
     # All visualized in the 3D PCA space fit the the example RNN states.
-    plot_fps(unique_fps, valid_predictions['state'],
+    fig = plot_fps(unique_fps, valid_predictions['state'],
         plot_batch_idx=list(range(30)),
         plot_start_time=10)
+
+    model.save_visualizations(figs={'fixed_points': fig})
 
     print('Entering debug mode to allow interaction with objects and figures.')
     print('You should see a figure with:')

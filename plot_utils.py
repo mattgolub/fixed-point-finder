@@ -1,9 +1,9 @@
 '''
 plot_utils.py
 Supports FixedPointFinder
-Written for Python 3.6.9 and TensorFlow 1.14
-@ Matt Golub, October 2018.
-Please direct correspondence to mgolub@stanford.edu.
+Written for Python 3.6.9
+@ Matt Golub, October 2018
+Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import numpy as np
@@ -148,14 +148,14 @@ def plot_fps(fps,
         plot_fixed_point(
             ax,
             fps[init_idx],
-            # xstar[init_idx:(init_idx+1)],
-            # J_xstar[init_idx],
             pca,
             scale=mode_scale)
 
     plt.ion()
     plt.show()
     plt.pause(1e-10)
+    
+    return fig
 
 def plot_fixed_point(ax, fp, pca,
 	scale=1.0,
