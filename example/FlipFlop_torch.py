@@ -5,6 +5,8 @@ Written for Python 3.6.9 and Pytorch 1.12.1
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
+import pdb
+
 import sys
 import time
 import numpy as np
@@ -71,28 +73,42 @@ class FlipFlopDataset(Dataset):
 
 class FlipFlop(nn.Module):
 
-	def __init__(self, n_inputs, n_hidden, n_outputs, 
-		nonlinearity='tanh'):
+	def __init__(self, n_inputs, n_hidden, n_outputs,
+		rnn_type='rnn'):
 
 		super().__init__()
 
 		self.n_inputs = n_inputs
 		self.n_hidden = n_hidden
 		self.n_outputs = n_outputs
-		self.nonlinearity = nonlinearity
+		self.rnn_type = rnn_type
 		self.device = get_device()
 
 		zeros_1xd = torch.zeros(1, n_hidden, device=self.device)
-		self.initial_hiddens_1xd = nn.Parameter(zeros_1xd)
-		
-		self.rnn = nn.RNN(n_inputs, n_hidden, 
-			batch_first=True, 
-			nonlinearity=nonlinearity,
-			device=self.device)
 
-		# self.rnn = nn.GRU(n_inputs, n_hidden, 
-		# 	batch_first=True, 
-		# 	device=self.device)
+		self.initial_hiddens_1xd = nn.Parameter(zeros_1xd)
+
+		self._is_lstm = False
+
+		if rnn_type.lower()=='rnn':
+		
+			self.rnn = nn.RNN(n_inputs, n_hidden, 
+				batch_first=True, 
+				device=self.device)
+
+		elif rnn_type.lower()=='gru':
+
+			self.rnn = nn.GRU(n_inputs, n_hidden, 
+				batch_first=True, 
+				device=self.device)
+
+		elif rnn_type.lower()=='lstm':
+
+			self._is_lstm = True
+			self.initial_cell_1xd = nn.Parameter(zeros_1xd)
+			self.rnn = nn.LSTM(n_inputs, n_hidden, 
+				batch_first=True, 
+				device=self.device)
 
 		self.readout = nn.Linear(n_hidden, n_outputs, device=self.device)
 
@@ -123,8 +139,18 @@ class FlipFlop(nn.Module):
 		initial_hiddens_1xbxd = self.initial_hiddens_1xd.expand(
 			1, batch_size, self.n_hidden)
 
-		# Pass the input through the RNN layer
-		hiddens_bxtxd, _ = self.rnn(inputs_bxtxd, initial_hiddens_1xbxd)        
+		if self._is_lstm:
+			initial_cell_1xbxd = self.initial_cell_1xd.expand(
+				1, batch_size, self.n_hidden)
+
+			initial_lstm_state = (initial_hiddens_1xbxd, initial_cell_1xbxd)
+
+			# Pass the input through the RNN layer
+			hiddens_bxtxd, _ = self.rnn(inputs_bxtxd, initial_lstm_state)    
+		
+		else:
+			# Pass the input through the RNN layer
+			hiddens_bxtxd, _ = self.rnn(inputs_bxtxd, initial_hiddens_1xbxd)        
 
 		outputs_bxtxd = self.readout(hiddens_bxtxd)
 
@@ -173,6 +199,65 @@ class FlipFlop(nn.Module):
 
 		return self._loss_fn(pred['output'], data['targets'])
 
+	def _train_epoch(self, dataloader, optimizer, verbose=False):
+
+		n_trials = len(dataloader)
+		avg_loss = 0; 
+		avg_norm = 0
+
+		for batch_idx, batch_data in enumerate(dataloader):
+
+			step_summary = self._train_step(batch_data, optimizer)
+			
+			# Add to the running loss average
+			avg_loss += step_summary['loss']/n_trials
+			
+			# Add to the running gradient norm average
+			avg_norm += step_summary['grad_norm']/n_trials
+
+			if verbose:
+				print('\tStep %d; loss: %.2e; grad norm: %.2e; time: %.2es' %
+					(batch_idx, 
+					step_summary['loss'], 
+					step_summary['grad_norm'], 
+					step_summary['time']))
+
+			return avg_loss, avg_norm
+
+	def _train_step(self, batch_data, optimizer):
+		'''
+		Returns:
+
+		'''
+
+		t_start = time.time()
+
+
+		# Run the model and compute loss
+		batch_pred = self.forward(batch_data)
+		loss = self._loss(batch_data, batch_pred)
+		
+		# Run the backward pass and gradient descent step
+		optimizer.zero_grad()
+		loss.backward()
+		# nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm)
+		optimizer.step()
+
+		grad_norms = [p.grad.norm().cpu() for p in self.parameters()]
+
+		loss_np = loss.item()
+		grad_norm_np = np.mean(grad_norms)
+
+		t_step = time.time() - t_start
+
+		summary = {
+			'loss': loss_np,
+			'grad_norm': grad_norm_np,
+			'time': t_step
+		}
+
+		return summary
+
 	def train(self, train_data, valid_data, 
 		learning_rate=1.0,
 		batch_size=128,
@@ -212,33 +297,14 @@ class FlipFlop(nn.Module):
 				valid_pred = self._forward_np(valid_dataset[0:1])
 				fig = FlipFlopData.plot_trials(valid_data, valid_pred, fig=fig)
 
-			avg_loss = 0; avg_norm = 0
-			for batch_idx, batch_data in enumerate(dataloader):
-				
-				# Run the model and compute loss
-				batch_pred = self.forward(batch_data)
-				loss = self._loss(batch_data, batch_pred)
-				
-				# Run the backward pass and gradient descent step
-				optimizer.zero_grad()
-				loss.backward()
-				# nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm)
-				optimizer.step()
-				
-				# Add to the running loss average
-				avg_loss += loss/len(dataloader)
-				
-				# Add to the running gradient norm average
-				grad_norms = [p.grad.norm().cpu() for p in self.parameters()]
-				grad_norm = np.mean(grad_norms)
-				avg_norm += grad_norm/len(dataloader)
+			avg_loss, avg_norm = self._train_epoch(dataloader, optimizer)
 
 			scheduler.step(metrics=avg_loss)
 			iter_learning_rate = scheduler.state_dict()['_last_lr'][0]
 				
 			# Store the loss
-			losses.append(avg_loss.item())
-			grad_norms.append(avg_norm.item())
+			losses.append(avg_loss)
+			grad_norms.append(avg_norm)
 
 			t_epoch = time.time() - t_start
 				
@@ -246,7 +312,7 @@ class FlipFlop(nn.Module):
 				print('Epoch %d; loss: %.2e; grad norm: %.2e; learning rate: %.2e; time: %.2es' %
 					(epoch, losses[-1], grad_norms[-1], iter_learning_rate, t_epoch))
 
-			if loss < min_loss:
+			if avg_loss < min_loss:
 				break
 
 			epoch += 1

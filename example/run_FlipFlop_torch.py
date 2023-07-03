@@ -9,7 +9,6 @@ import pdb
 import sys
 import numpy as np
 
-
 PATH_TO_FIXED_POINT_FINDER = '../'
 sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
 from FlipFlop_torch import FlipFlop
@@ -34,17 +33,30 @@ def train_FlipFlop():
 
 				The model's predictions on a set of held-out validation trials.
 	'''
+
+	# Data specifications
 	n_bits = 3
-	n_hidden = 16
 	n_train = 512
 	n_valid = 128
+
+	# Model hyperparameters
+	n_hidden = 16
 	batch_size = 128
+	rnn_type = 'rnn' # see note below
+
+	# Note: 'gru' should work in principle, and in the TF example it certainly does.
+	# However, in this Pytorch example, fixed point finding in a GRU is not working
+	# as expected.
 
 	data_gen = FlipFlopData()
 	train_data = data_gen.generate_data(n_trials=n_train)
 	valid_data = data_gen.generate_data(n_trials=n_valid)
 
-	model = FlipFlop(n_inputs=n_bits, n_hidden=n_hidden, n_outputs=n_bits)
+	model = FlipFlop(
+		n_inputs=n_bits, 
+		n_hidden=n_hidden, 
+		n_outputs=n_bits,
+		rnn_type=rnn_type)
 
 	losses, grad_norms = model.train(train_data, valid_data,
 		learning_rate=1./np.sqrt(batch_size),
@@ -79,6 +91,7 @@ def find_fixed_points(model, valid_predictions):
 	'''Fixed point finder hyperparameters. See FixedPointFinder.py for detailed
 	descriptions of available hyperparameters.'''
 	fpf_hps = {
+		'max_iters': 20000,
 		'verbose': True, 
 		'super_verbose': True}
 

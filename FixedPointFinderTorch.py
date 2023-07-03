@@ -15,6 +15,8 @@ https://doi.org/10.21105/joss.01003
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
+import pdb
+
 import numpy as np
 import time
 from copy import deepcopy
@@ -36,8 +38,10 @@ class FixedPointFinderTorch(FixedPointFinderBase):
         '''Creates a FixedPointFinder object.
 
         Args:
-            rnn: A Pytorch RNN object.
-
+            rnn: A Pytorch RNN object. The following are supported: nn.RNN, nn.GRU,
+            or any wrapper class that matches the input/output argument 
+            specifications of output, h_n = nn.RNN(input, h0). 
+            
             lr_init: Scalar, initial learning rate. Default: 1.0.
 
             lr_patience: The 'patience' arg provided to ReduceLROnPlateau().
@@ -129,14 +133,14 @@ class FixedPointFinderTorch(FixedPointFinderBase):
 
         while True:
             
-            optimizer.zero_grad()
-            
-            _, F_x_1xbxd = self.rnn(inputs_bx1xd, x_1xbxd)
+            F_x_bx1xd, F_x_1xbxd = self.rnn(inputs_bx1xd, x_1xbxd)
 
             dx_bxd = torch.squeeze(x_1xbxd - F_x_1xbxd)
             q_b = 0.5 * torch.sum(torch.square(dx_bxd), axis=1)
             q_scalar = torch.mean(q_b)
             dq_b = torch.abs(q_b - q_prev_b)
+            
+            optimizer.zero_grad()
             q_scalar.backward()
             
             optimizer.step()
