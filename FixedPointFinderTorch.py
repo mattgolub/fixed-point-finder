@@ -1,8 +1,8 @@
 '''
 Pytorch FixedPointFinder
-Written for Python 3.6.9 and Pytorch (1.12.1)
-@ Matt Golub, 2018-2023.
-@ Alexander Ladd, 2022
+Written for Python 3.8.17 and Pytorch 2.0.1
+@ Matt Golub, June 2023
+@ with contributions from Alexander Ladd, 2022
 
 If you are using FixedPointFinder in research to be published, 
 please cite our accompanying paper in your publication:

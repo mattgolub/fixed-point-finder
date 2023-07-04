@@ -1,6 +1,6 @@
 '''
 flipflop.py
-Written for Python 3.6.9
+Written for Python 3.8.17
 @ Matt Golub, June 2023
 Please direct correspondence to mgolub@cs.washington.edu
 '''

@@ -1,6 +1,6 @@
 '''
 TensorFlow FixedPointFinder
-Written for Python 3.6.9 and TensorFlow 2.8.0
+Written for Python 3.8.17 and TensorFlow 2.8.0
 @ Matt Golub, 2018-2023.
 
 If you are using FixedPointFinder in research to be published, 
@@ -17,7 +17,6 @@ Please direct correspondence to mgolub@cs.washington.edu
 import numpy as np
 import time
 from copy import deepcopy
-import pdb
 
 import tensorflow as tf
 tf1 = tf.compat.v1
@@ -27,7 +26,6 @@ tf1.disable_eager_execution()
 from FixedPoints import FixedPoints
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
-from Timer import Timer
 
 class FixedPointFinderTF(FixedPointFinderBase):
 
@@ -684,6 +682,9 @@ class FixedPointFinderTF(FixedPointFinderBase):
     '''
     def _test_decompose_jacobians(self, unique_fps, J_np, J_tf):
 
+        from time import time
+        import pdb
+
         def decompose_J1(J_tf):
             e_tf, v_tf = tf.linalg.eigh(J_tf)
             e_np, v_np = self.session.run([e_tf, v_tf])
@@ -701,9 +702,6 @@ class FixedPointFinderTF(FixedPointFinderBase):
 
             return decompose_J1(J_tf)
 
-        timer_eigs = Timer(3)
-        timer_eigs.start()
-
         self._print_if_verbose(
             '\tDecomposing Jacobians in Tensorflow....')
 
@@ -711,19 +709,28 @@ class FixedPointFinderTF(FixedPointFinderBase):
         # evals, evecs = decompose_J1(J_tf)
 
         # This returns complex data type, but imaginary components are all 0!
+        t_start = time()
         e2, v2 = decompose_J2(J_np)
-        timer_eigs.split('TF v2')
+        t2 = t_start - time()
+        print('\t\tTF v2: %.3e seconds' % t2)
 
         # This returns complex data type, but imaginary components are all 0!
+        t_start = time()
         e3, v3 = decompose_J3(J_np)
-        timer_eigs.split('TF v3')
+        t3 = t_start - time()
+        print('\t\tTF v3: %.3e seconds' % t3)
 
         self._print_if_verbose('\t\tDone.')
 
-        unique_fps.decompose_jacobians(str_prefix='\t')
-        timer_eigs.split('NP eigs')
+        self._print_if_verbose(
+            '\tDecomposing Jacobians in Numpy....')
 
-        timer_eigs.disp()
+        t_start = time()
+        unique_fps.decompose_jacobians(str_prefix='\t')
+        t_np = time() - t_start
+        print('\t\tNumpy Eigs: %.3e seconds' % t_np)
+
+        self._print_if_verbose('\t\tDone.')
 
         '''Look at differences in leading eigenvalue:'''
 

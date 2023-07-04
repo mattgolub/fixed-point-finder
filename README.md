@@ -65,7 +65,7 @@ Advanced Python users and those wishing to develop [contributions](https://githu
 
 ## Example
 
-``FixedPointFinder`` includes an end-to-end example, implemented separately in PyTorch and TensorFlow, that trains an RNN to solve a task and then identifies and visualizes the fixed points of the trained RNN. To run the example, descend into the example directory: `fixed-point-finder/example/` and execute:
+``FixedPointFinder`` includes an end-to-end example, implemented separately in PyTorch and TensorFlow, that trains an RNN to solve a task and then identifies and visualizes the fixed points of the trained RNN. To run the example, descend into the example directory: `fixed-point-finder/examples/` and execute:
 
 For PyTorch:
 
@@ -117,7 +117,7 @@ Coming soon!
     ```python
     >>> fps.plot()
     ```
-    You can also visualize these fixed points amongst state trajectories from your RNN (see `plot` in [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) and the example in [run_FlipFlop.py](https://github.com/mattgolub/fixed-point-finder/blob/master/example/run_FlipFlop.py))
+    You can also visualize these fixed points amongst state trajectories from your RNN (see `plot` in [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) and the example in [run_FlipFlop_torch.py](https://github.com/mattgolub/fixed-point-finder/blob/master/examples/run_FlipFlop_torch.py) and [run_FlipFlop_tf.py](https://github.com/mattgolub/fixed-point-finder/blob/master/examples/run_FlipFlop_tf.py))
 
 ## Testing the Package
 

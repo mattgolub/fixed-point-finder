@@ -2,7 +2,7 @@
 FixedPoints Class
 Supports FixedPointFinder
 
-Written for Python 3.6.9
+Written for Python 3.8.17
 @ Matt Golub, October 2018
 
 If you are using FixedPointFinder in research to be published, 
@@ -19,8 +19,6 @@ Please direct correspondence to mgolub@cs.washington.edu
 import pdb
 import numpy as np
 import pickle
-
-from Timer import Timer
 
 class FixedPoints(object):
     '''

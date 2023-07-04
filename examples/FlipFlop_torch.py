@@ -1,6 +1,6 @@
 '''
 FlipFlop_torch.py
-Written for Python 3.6.9 and Pytorch 1.12.1
+Written for Python 3.8.17 and Pytorch 2.0.1
 @ Matt Golub, June 2023
 Please direct correspondence to mgolub@cs.washington.edu
 '''

@@ -1,7 +1,7 @@
 '''
 plot_utils.py
 Supports FixedPointFinder
-Written for Python 3.6.9
+Written for Python 3.8.17
 @ Matt Golub, October 2018
 Please direct correspondence to mgolub@cs.washington.edu
 '''

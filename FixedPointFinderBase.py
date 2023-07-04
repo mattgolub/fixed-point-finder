@@ -1,6 +1,6 @@
 '''
 FixedPointFinderBase
-Written for Python 3.6.9
+Written for Python 3.8.17
 @ Matt Golub, 2018-2023.
 
 If you are using FixedPointFinder in research to be published, 
