@@ -199,65 +199,6 @@ class FlipFlop(nn.Module):
 
 		return self._loss_fn(pred['output'], data['targets'])
 
-	def _train_epoch(self, dataloader, optimizer, verbose=False):
-
-		n_trials = len(dataloader)
-		avg_loss = 0; 
-		avg_norm = 0
-
-		for batch_idx, batch_data in enumerate(dataloader):
-
-			step_summary = self._train_step(batch_data, optimizer)
-			
-			# Add to the running loss average
-			avg_loss += step_summary['loss']/n_trials
-			
-			# Add to the running gradient norm average
-			avg_norm += step_summary['grad_norm']/n_trials
-
-			if verbose:
-				print('\tStep %d; loss: %.2e; grad norm: %.2e; time: %.2es' %
-					(batch_idx, 
-					step_summary['loss'], 
-					step_summary['grad_norm'], 
-					step_summary['time']))
-
-			return avg_loss, avg_norm
-
-	def _train_step(self, batch_data, optimizer):
-		'''
-		Returns:
-
-		'''
-
-		t_start = time.time()
-
-
-		# Run the model and compute loss
-		batch_pred = self.forward(batch_data)
-		loss = self._loss(batch_data, batch_pred)
-		
-		# Run the backward pass and gradient descent step
-		optimizer.zero_grad()
-		loss.backward()
-		# nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm)
-		optimizer.step()
-
-		grad_norms = [p.grad.norm().cpu() for p in self.parameters()]
-
-		loss_np = loss.item()
-		grad_norm_np = np.mean(grad_norms)
-
-		t_step = time.time() - t_start
-
-		summary = {
-			'loss': loss_np,
-			'grad_norm': grad_norm_np,
-			'time': t_step
-		}
-
-		return summary
-
 	def train(self, train_data, valid_data, 
 		learning_rate=1.0,
 		batch_size=128,
@@ -269,7 +210,9 @@ class FlipFlop(nn.Module):
 		train_dataset = FlipFlopDataset(train_data)
 		valid_dataset = FlipFlopDataset(valid_data)
 
-		dataloader = DataLoader(train_dataset, batch_size=batch_size)
+		dataloader = DataLoader(train_dataset, 
+			shuffle=True,
+			batch_size=batch_size)
 
 		# Create the optimizer
 		optimizer = optim.Adam(self.parameters(), 
@@ -321,3 +264,62 @@ class FlipFlop(nn.Module):
 		fig = FlipFlopData.plot_trials(valid_data, valid_pred, fig=fig)
 
 		return losses, grad_norms
+
+	def _train_epoch(self, dataloader, optimizer, verbose=False):
+
+		n_trials = len(dataloader)
+		avg_loss = 0; 
+		avg_norm = 0
+
+		for batch_idx, batch_data in enumerate(dataloader):
+
+			step_summary = self._train_step(batch_data, optimizer)
+			
+			# Add to the running loss average
+			avg_loss += step_summary['loss']/n_trials
+			
+			# Add to the running gradient norm average
+			avg_norm += step_summary['grad_norm']/n_trials
+
+			if verbose:
+				print('\tStep %d; loss: %.2e; grad norm: %.2e; time: %.2es' %
+					(batch_idx, 
+					step_summary['loss'], 
+					step_summary['grad_norm'], 
+					step_summary['time']))
+
+		return avg_loss, avg_norm
+
+	def _train_step(self, batch_data, optimizer):
+		'''
+		Returns:
+
+		'''
+
+		t_start = time.time()
+
+
+		# Run the model and compute loss
+		batch_pred = self.forward(batch_data)
+		loss = self._loss(batch_data, batch_pred)
+		
+		# Run the backward pass and gradient descent step
+		optimizer.zero_grad()
+		loss.backward()
+		# nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_norm)
+		optimizer.step()
+
+		grad_norms = [p.grad.norm().cpu() for p in self.parameters()]
+
+		loss_np = loss.item()
+		grad_norm_np = np.mean(grad_norms)
+
+		t_step = time.time() - t_start
+
+		summary = {
+			'loss': loss_np,
+			'grad_norm': grad_norm_np,
+			'time': t_step
+		}
+
+		return summary
