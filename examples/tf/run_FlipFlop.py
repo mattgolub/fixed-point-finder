@@ -1,7 +1,7 @@
 '''
-run_flipflop.py
-Written for Python 3.6.9 and TensorFlow 2.8.0
-@ Matt Golub, October 2018
+examples/tf/run_FlipFlop.py
+Written for Python 3.8.17 and TensorFlow 2.8.0
+@ Matt Golub, 2018-2023
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
@@ -10,10 +10,10 @@ import sys
 import argparse
 import numpy as np
 
-PATH_TO_FIXED_POINT_FINDER = '../'
+PATH_TO_FIXED_POINT_FINDER = '../../'
 sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
-from FlipFlop_tf import FlipFlop
-from FixedPointFinder import FixedPointFinder
+from FlipFlop import FlipFlop
+from FixedPointFinderTF import FixedPointFinderTF as FixedPointFinder
 from plot_utils import plot_fps
 
 def train_FlipFlop(train_mode):
@@ -46,8 +46,8 @@ def train_FlipFlop(train_mode):
     # Hyperparameters for FlipFlop
     # See FlipFlop.py for detailed descriptions.
     hps = {
-            'rnn_type': 'gru',
-            'n_hidden': 16,
+            'rnn_type': 'vanilla',
+            'n_hidden': 8,
             'min_loss': 1e-4,
             'log_dir': './logs/',
             'do_generate_pretraining_visualizations': True,
@@ -68,8 +68,8 @@ def train_FlipFlop(train_mode):
 
     model = FlipFlop(**hps)
 
-    train_data = model.generate_data(n_trials=hps['data_hps']['n_batch'])
-    valid_data = model.generate_data(n_trials=hps['data_hps']['n_batch'])
+    train_data = model.generate_data()
+    valid_data = model.generate_data()
 
     if train_mode == 1:
         model.train()

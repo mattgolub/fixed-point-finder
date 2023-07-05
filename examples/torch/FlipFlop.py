@@ -1,5 +1,5 @@
 '''
-FlipFlop_torch.py
+examples/torch/FlipFlop.py
 Written for Python 3.8.17 and Pytorch 2.0.1
 @ Matt Golub, June 2023
 Please direct correspondence to mgolub@cs.washington.edu
@@ -16,18 +16,16 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 
-PATH_TO_FIXED_POINT_FINDER = '../'
+PATH_TO_FIXED_POINT_FINDER = '../../'
 sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
 from FixedPointFinderTorch import FixedPointFinderTorch as FixedPointFinder
 from FixedPoints import FixedPoints
-from plot_utils import plot_fps
 
 from FlipFlopData import FlipFlopData
-from torch_utils import get_device
 
 class FlipFlopDataset(Dataset):
 
-	def __init__(self, data):
+	def __init__(self, data, device='cpu'):
 		'''
 		Args:
 			data:
@@ -38,7 +36,7 @@ class FlipFlopDataset(Dataset):
 		'''
 		
 		super().__init__()
-		self.device = get_device(verbose=False)
+		self.device = device
 		self.data = data
 
 	def __len__(self):
@@ -74,15 +72,15 @@ class FlipFlopDataset(Dataset):
 class FlipFlop(nn.Module):
 
 	def __init__(self, n_inputs, n_hidden, n_outputs,
-		rnn_type='rnn'):
+		rnn_type='tanh'):
 
 		super().__init__()
 
 		self.n_inputs = n_inputs
 		self.n_hidden = n_hidden
 		self.n_outputs = n_outputs
-		self.rnn_type = rnn_type
-		self.device = get_device()
+		self.rnn_type = rnn_type.lower()
+		self.device = self._get_device()
 
 		zeros_1xd = torch.zeros(1, n_hidden, device=self.device)
 
@@ -90,25 +88,29 @@ class FlipFlop(nn.Module):
 
 		self._is_lstm = False
 
-		if rnn_type.lower()=='rnn':
+		if self.rnn_type in ['tanh', 'relu']:
 		
-			self.rnn = nn.RNN(n_inputs, n_hidden, 
+			self.rnn = nn.RNN(n_inputs, n_hidden,
+				nonlinearity=self.rnn_type,
 				batch_first=True, 
 				device=self.device)
 
-		elif rnn_type.lower()=='gru':
+		elif self.rnn_type=='gru':
 
 			self.rnn = nn.GRU(n_inputs, n_hidden, 
 				batch_first=True, 
 				device=self.device)
 
-		elif rnn_type.lower()=='lstm':
+		elif self.rnn_type=='lstm':
 
 			self._is_lstm = True
 			self.initial_cell_1xd = nn.Parameter(zeros_1xd)
 			self.rnn = nn.LSTM(n_inputs, n_hidden, 
 				batch_first=True, 
 				device=self.device)
+
+		else:
+			raise ValueError('Unsupported rnn_type: \'%s\'' % rnn_type)
 
 		self.readout = nn.Linear(n_hidden, n_outputs, device=self.device)
 
@@ -172,7 +174,7 @@ class FlipFlop(nn.Module):
 			detached numpy arrays on cpu memory.
 
 		'''
-		dataset = FlipFlopDataset(data)
+		dataset = FlipFlopDataset(data, device=self.device)
 		pred_np = self._forward_np(dataset[:len(dataset)])
 
 		return pred_np
@@ -207,8 +209,8 @@ class FlipFlop(nn.Module):
 		plot_every=5, 
 		max_norm=1.):
 
-		train_dataset = FlipFlopDataset(train_data)
-		valid_dataset = FlipFlopDataset(valid_data)
+		train_dataset = FlipFlopDataset(train_data, device=self.device)
+		valid_dataset = FlipFlopDataset(valid_data, device=self.device)
 
 		dataloader = DataLoader(train_dataset, 
 			shuffle=True,
@@ -323,3 +325,33 @@ class FlipFlop(nn.Module):
 		}
 
 		return summary
+
+	@classmethod
+	def _get_device(cls, verbose=False):
+		"""
+		Set the device. CUDA if available, else MPS if available (Apple Silicon), CPU otherwise.
+
+		Args:
+			None.
+
+		Returns:
+			Device string ("cuda", "mps" or "cpu").
+		"""
+		if torch.backends.cuda.is_built() and torch.cuda.is_available():
+			device = "cuda"
+			if verbose: 
+				print("CUDA GPU enabled.")
+		else:
+			device = "cpu"
+			if verbose:
+				print("No GPU found. Running on CPU.")
+
+		# I'm overriding here because of performance and correctness issues with 
+		# Apple Silicon MPS: https://github.com/pytorch/pytorch/issues/94691
+		#
+		# elif torch.backends.mps.is_built() and torch.backends.mps.is_available():
+		# 	device = "mps"
+		# 	if verbose:
+		# 		print("Apple Silicon GPU enabled.")
+
+		return device

@@ -23,6 +23,7 @@ tf1 = tf.compat.v1
 tf1.disable_eager_execution()
 # tf1.disable_v2_behavior()
 
+from FixedPointFinderBase import FixedPointFinderBase
 from FixedPoints import FixedPoints
 from AdaptiveLearningRate import AdaptiveLearningRate
 from AdaptiveGradNormClip import AdaptiveGradNormClip
@@ -60,7 +61,7 @@ class FixedPointFinderTF(FixedPointFinderBase):
         feed_dict=_default_hps['feed_dict'],
         alr_hps=_default_hps['alr_hps'],
         agnc_hps=_default_hps['agnc_hps'],
-        adam_hps=_default_hps['adam_hps']
+        adam_hps=_default_hps['adam_hps'],
         **kwargs):
         '''Creates a FixedPointFinder object.
 
@@ -99,9 +100,10 @@ class FixedPointFinderTF(FixedPointFinderBase):
         self.adaptive_learning_rate_hps = alr_hps
         self.grad_norm_clip_hps = agnc_hps
         self.adam_optimizer_hps = adam_hps
-        self.tf_dtype = getattr(tf, self.dtype)
+        
         super().__init__(rnn_cell, **kwargs)
-
+        self.tf_dtype = getattr(tf, self.dtype)
+        
     # *************************************************************************
     # Tensorflow Core (these functions will be updated in next major revision)
     # *************************************************************************

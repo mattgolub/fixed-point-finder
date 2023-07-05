@@ -1,5 +1,5 @@
 '''
-run_flipflop_torch.py
+examples/torch/run_FlipFlop.py
 Written for Python 3.8.17 and Pytorch 2.0.1
 @ Matt Golub, June 2023
 Please direct correspondence to mgolub@cs.washington.edu
@@ -9,14 +9,15 @@ import pdb
 import sys
 import numpy as np
 
-PATH_TO_FIXED_POINT_FINDER = '../'
+PATH_TO_FIXED_POINT_FINDER = '../../'
+PATH_TO_HELPER = '../helper/'
 sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
-from FlipFlop_torch import FlipFlop
-from FixedPointFinderTorch import FixedPointFinderTorch as FixedPointFinder
-from plot_utils import plot_fps
+sys.path.insert(0, PATH_TO_HELPER)
 
+from FlipFlop import FlipFlop
+from FixedPointFinderTorch import FixedPointFinderTorch as FixedPointFinder
 from FlipFlopData import FlipFlopData
-from torch_utils import get_device
+from plot_utils import plot_fps
 
 def train_FlipFlop():
 	''' Train an RNN to solve the N-bit memory task.
@@ -42,7 +43,7 @@ def train_FlipFlop():
 	# Model hyperparameters
 	n_hidden = 16
 	batch_size = 128
-	rnn_type = 'rnn' # see note below
+	rnn_type = 'tanh' # see note below
 
 	# Note: 'gru' should work in principle, and in the TF example it certainly does.
 	# However, in this Pytorch example, fixed point finding in a GRU is not working
@@ -91,7 +92,9 @@ def find_fixed_points(model, valid_predictions):
 	'''Fixed point finder hyperparameters. See FixedPointFinder.py for detailed
 	descriptions of available hyperparameters.'''
 	fpf_hps = {
-		'max_iters': 20000,
+		'max_iters': 10000,
+		'lr_init': 1.,
+		'outlier_distance_scale': 10.0,
 		'verbose': True, 
 		'super_verbose': True}
 
@@ -116,6 +119,24 @@ def find_fixed_points(model, valid_predictions):
 		plot_batch_idx=list(range(30)),
 		plot_start_time=10)
 
+def main():
+
+	# Step 1: Train an RNN to solve the N-bit memory task
+	model, valid_predictions = train_FlipFlop()
+
+	for p in model.parameters():
+		name = p.name
+		sum_abs = np.sum(np.abs(p.detach().numpy()))
+		print('%s: %.5e' % (name, sum_abs))
+
+	# STEP 2: Find, analyze, and visualize the fixed points of the trained RNN
+	find_fixed_points(model, valid_predictions)
+
+	for p in model.parameters():
+		name = p.name
+		sum_abs = np.sum(np.abs(p.detach().numpy()))
+		print('%s: %.5e' % (name, sum_abs))
+
 	print('Entering debug mode to allow interaction with objects and figures.')
 	print('You should see a figure with:')
 	print('\tMany blue lines approximately outlining a cube')
@@ -124,14 +145,6 @@ def find_fixed_points(model, valid_predictions):
 		'on edges, surfaces and center of the cube')
 	print('Enter q to quit.\n')
 	pdb.set_trace()
-	
-def main():
-
-	# Step 1: Train an RNN to solve the N-bit memory task
-	model, valid_predictions = train_FlipFlop()
-
-	# STEP 2: Find, analyze, and visualize the fixed points of the trained RNN
-	find_fixed_points(model, valid_predictions)
 
 if __name__ == '__main__':
 	main()

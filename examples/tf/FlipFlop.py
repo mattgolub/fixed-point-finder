@@ -1,7 +1,7 @@
 '''
 flipflop.py
 Written for Python 3.8.17 and TensorFlow 2.8.0
-@ Matt Golub, August 2018
+@ Matt Golub, 2018-2023
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
@@ -15,9 +15,11 @@ tf1 = tf.compat.v1
 tf1.disable_eager_execution()
 # tf1.disable_v2_behavior()
 
-from RecurrentWhisperer import RecurrentWhisperer
+PATH_TO_HELPER = '../helper/'
+sys.path.insert(0, PATH_TO_HELPER)
 from FlipFlopData import FlipFlopData
-import tf_utils
+
+from RecurrentWhisperer import RecurrentWhisperer
 
 class FlipFlop(RecurrentWhisperer):
     ''' Class for training an RNN to implement an N-bit memory, a.k.a. "the
@@ -67,7 +69,7 @@ class FlipFlop(RecurrentWhisperer):
             FlipFlop device (which will also be the number of output channels).
             Default: 3.
 
-            'p_flip': float between 0.0 and 1.0 specifying the probability
+            'p': float between 0.0 and 1.0 specifying the probability
             that a particular input channel at a particular timestep will
             contain a pulse (-1 or +1) on top of its steady-state value (0).
             Pulse signs are chosen by fair coin flips, and pulses are produced
@@ -105,7 +107,7 @@ class FlipFlop(RecurrentWhisperer):
                 'n_batch': 128,
                 'n_time': 256,
                 'n_bits': 3,
-                'p_flip': 0.2}
+                'p': 0.2}
             }
 
     @staticmethod
@@ -151,29 +153,18 @@ class FlipFlop(RecurrentWhisperer):
             self.rnn_cell = tf1.nn.rnn_cell.BasicRNNCell(n_hidden)
         elif hps.rnn_type == 'gru':
             self.rnn_cell = tf1.nn.rnn_cell.GRUCell(n_hidden)
-        elif hps.rnn_type == 'lstm':
-            self.rnn_cell = tf1.nn.rnn_cell.LSTMCell(n_hidden)
         else:
             raise ValueError('Hyperparameter rnn_type must be one of '
-                '[vanilla, gru, lstm] but was %s' % hps.rnn_type)
+                '[vanilla, gru] but was %s' % hps.rnn_type)
 
         initial_state = self.rnn_cell.zero_state(n_batch, dtype=tf.float32)
 
-        if hps.rnn_type == 'lstm':
-            self.state_bxtxd = tf_utils.unroll_LSTM(
-                self.rnn_cell,
-                inputs=self.inputs_bxtxd,
-                initial_state=initial_state)
+        self.state_bxtxd, _ = tf1.nn.dynamic_rnn(
+            self.rnn_cell,
+            inputs=self.inputs_bxtxd,
+            initial_state=initial_state)
 
-            self.hidden_bxtxd = self.state_bxtxd.h
-
-        else:
-            self.state_bxtxd, _ = tf1.nn.dynamic_rnn(
-                self.rnn_cell,
-                inputs=self.inputs_bxtxd,
-                initial_state=initial_state)
-
-            self.hidden_bxtxd = self.state_bxtxd
+        self.hidden_bxtxd = self.state_bxtxd
 
         # Readout from RNN
         np_W_out, np_b_out = self._np_init_weight_matrix(n_hidden, n_output)
@@ -251,13 +242,14 @@ class FlipFlop(RecurrentWhisperer):
         '''See docstring in RecurrentWhisperer.'''
         return batch_data['inputs'].shape[0]
 
-    def generate_data(self, train_or_valid_str=None):
+    def generate_data(self):
         '''Generates synthetic data (i.e., ground truth trials) for the
         FlipFlop task. See comments following FlipFlop class definition for a
         description of the input-output relationship in the task.
 
         Args:
-            None (RecurrentWhisperer option train_or_valid_str is ignored).
+            n_trials: Non-negative integer. Specifies the number of trials to 
+            generate.
 
         Returns:
             dict containing 'inputs' and 'outputs'.
@@ -272,13 +264,11 @@ class FlipFlop(RecurrentWhisperer):
         data_hps = self.hps.data_hps
 
         DataGen = FlipFlopData(
-            n_batch=data_hps['n_batch'],
             n_time=data_hps['n_time'],
             n_bits=data_hps['n_bits'],
-            p_flip=data_hps['p_flip'])
+            p=data_hps['p'])
         
-        # return {'inputs': inputs, 'targets': targets}
-        return DataGen.generate_data()
+        return DataGen.generate_data(n_trials=data_hps['n_batch'])
 
     def _split_data_into_batches(self, data):
         '''See docstring in RecurrentWhisperer.'''
@@ -322,4 +312,6 @@ class FlipFlop(RecurrentWhisperer):
         n_trials_plot = hps.n_trials_plot
         
 
-        FlipFlopData.plot_trials(data, pred, n_trials_plot=n_trials_plot, fig=fig)
+        FlipFlopData.plot_trials(data, pred, 
+            n_trials_plot=n_trials_plot, 
+            fig=fig)

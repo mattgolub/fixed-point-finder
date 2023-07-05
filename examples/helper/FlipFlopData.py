@@ -125,7 +125,7 @@ class FlipFlopData(object):
 		'''
 
 		FIG_WIDTH = 6 # inches
-		FIG_HEIGHT = 3 # inches
+		FIG_HEIGHT = 3*n_trials_plot # inches
 
 		if fig is None:
 			fig = plt.figure(
