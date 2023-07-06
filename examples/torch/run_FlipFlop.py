@@ -119,24 +119,6 @@ def find_fixed_points(model, valid_predictions):
 		plot_batch_idx=list(range(30)),
 		plot_start_time=10)
 
-def main():
-
-	# Step 1: Train an RNN to solve the N-bit memory task
-	model, valid_predictions = train_FlipFlop()
-
-	for p in model.parameters():
-		name = p.name
-		sum_abs = np.sum(np.abs(p.detach().numpy()))
-		print('%s: %.5e' % (name, sum_abs))
-
-	# STEP 2: Find, analyze, and visualize the fixed points of the trained RNN
-	find_fixed_points(model, valid_predictions)
-
-	for p in model.parameters():
-		name = p.name
-		sum_abs = np.sum(np.abs(p.detach().numpy()))
-		print('%s: %.5e' % (name, sum_abs))
-
 	print('Entering debug mode to allow interaction with objects and figures.')
 	print('You should see a figure with:')
 	print('\tMany blue lines approximately outlining a cube')
@@ -145,6 +127,14 @@ def main():
 		'on edges, surfaces and center of the cube')
 	print('Enter q to quit.\n')
 	pdb.set_trace()
+
+def main():
+
+	# Step 1: Train an RNN to solve the N-bit memory task
+	model, valid_predictions = train_FlipFlop()
+
+	# STEP 2: Find, analyze, and visualize the fixed points of the trained RNN
+	find_fixed_points(model, valid_predictions)
 
 if __name__ == '__main__':
 	main()
