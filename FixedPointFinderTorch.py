@@ -90,6 +90,7 @@ class FixedPointFinderTorch(FixedPointFinderBase):
         TIME_DIM = self._time_dim
 
         # Ensure that fixed point optimization does not alter RNN parameters.
+        print('\tFreezing model parameters so model is not affected by fixed point optimization.')
         for p in self.rnn.parameters():
             p.requires_grad = False
 
