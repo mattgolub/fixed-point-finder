@@ -1,7 +1,7 @@
 '''
-run_flipflop.py
-Written for Python 3.6.9 and TensorFlow 2.8.0
-@ Matt Golub, October 2018
+examples/tf/run_FlipFlop.py
+Written for Python 3.8.17 and TensorFlow 2.8.0
+@ Matt Golub, 2018-2023
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
@@ -10,11 +10,10 @@ import sys
 import argparse
 import numpy as np
 
-PATH_TO_FIXED_POINT_FINDER = '../'
+PATH_TO_FIXED_POINT_FINDER = '../../'
 sys.path.insert(0, PATH_TO_FIXED_POINT_FINDER)
 from FlipFlop import FlipFlop
-from FixedPointFinder import FixedPointFinder
-from FixedPoints import FixedPoints
+from FixedPointFinderTF import FixedPointFinderTF as FixedPointFinder
 from plot_utils import plot_fps
 
 def train_FlipFlop(train_mode):
@@ -47,8 +46,8 @@ def train_FlipFlop(train_mode):
     # Hyperparameters for FlipFlop
     # See FlipFlop.py for detailed descriptions.
     hps = {
-            'rnn_type': 'lstm',
-            'n_hidden': 16,
+            'rnn_type': 'gru',
+            'n_hidden': 32,
             'min_loss': 1e-4,
             'log_dir': './logs/',
             'do_generate_pretraining_visualizations': True,
@@ -57,7 +56,7 @@ def train_FlipFlop(train_mode):
                 'n_batch': 512,
                 'n_time': 64,
                 'n_bits': 3,
-                'p_flip': 0.5
+                'p': 0.5
                 },
 
             # Hyperparameters for AdaptiveLearningRate
@@ -120,7 +119,6 @@ def find_fixed_points(model, valid_predictions):
     N_INITS = 1024 # The number of initial states to provide
 
     n_bits = model.hps.data_hps['n_bits']
-    is_lstm = model.hps.rnn_type == 'lstm'
 
     '''Fixed point finder hyperparameters. See FixedPointFinder.py for detailed
     descriptions of available hyperparameters.'''
@@ -130,7 +128,7 @@ def find_fixed_points(model, valid_predictions):
     fpf = FixedPointFinder(model.rnn_cell, model.session, **fpf_hps)
 
     # Study the system in the absence of input pulses (e.g., all inputs are 0)
-    inputs = np.zeros([1,n_bits])
+    inputs = np.zeros([1, n_bits])
 
     '''Draw random, noise corrupted samples of those state trajectories
     to use as initial states for the fixed point optimizations.'''
@@ -149,15 +147,6 @@ def find_fixed_points(model, valid_predictions):
 
     model.save_visualizations(figs={'fixed_points': fig})
 
-    print('Entering debug mode to allow interaction with objects and figures.')
-    print('You should see a figure with:')
-    print('\tMany blue lines approximately outlining a cube')
-    print('\tStable fixed points (black dots) at corners of the cube')
-    print('\tUnstable fixed points (red lines or crosses) '
-        'on edges, surfaces and center of the cube')
-    print('Enter q to quit.\n')
-    pdb.set_trace()
-
 def main():
 
     parser = argparse.ArgumentParser(
@@ -171,6 +160,15 @@ def main():
 
     # STEP 2: Find, analyze, and visualize the fixed points of the trained RNN
     find_fixed_points(model, valid_predictions)
+
+    print('Entering debug mode to allow interaction with objects and figures.')
+    print('You should see a figure with:')
+    print('\tMany blue lines approximately outlining a cube')
+    print('\tStable fixed points (black dots) at corners of the cube')
+    print('\tUnstable fixed points (red lines or crosses) '
+        'on edges, surfaces and center of the cube')
+    print('Enter q to quit.\n')
+    pdb.set_trace()
 
 if __name__ == '__main__':
     main()

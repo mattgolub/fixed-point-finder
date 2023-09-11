@@ -1,0 +1,5 @@
+numpy==1.24.3
+scikit-learn==1.2.2
+matplotlib==3.7.1
+tensorflow==2.8.0
+-e git+https://github.com/mattgolub/recurrent-whisperer.git@master#egg=recurrent-whisperer

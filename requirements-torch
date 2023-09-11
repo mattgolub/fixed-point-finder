@@ -1,0 +1,4 @@
+numpy==1.24.3
+scikit-learn==1.2.2
+matplotlib==3.7.1
+pytorch=1.12.1

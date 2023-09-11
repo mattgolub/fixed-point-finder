@@ -1,7 +1,7 @@
 '''
 plot_utils.py
 Supports FixedPointFinder
-Written for Python 3.6.9
+Written for Python 3.8.17
 @ Matt Golub, October 2018
 Please direct correspondence to mgolub@cs.washington.edu
 '''
@@ -12,8 +12,6 @@ import pdb
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
-
-import tf_utils
 
 def plot_fps(fps,
     state_traj=None,
@@ -82,12 +80,8 @@ def plot_fps(fps,
             tight_layout=True)
 
     if state_traj is not None:
-        if tf_utils.is_lstm(state_traj):
-            state_traj_bxtxd = tf_utils.convert_from_LSTMStateTuple(
-                state_traj)
-        else:
-            state_traj_bxtxd = state_traj
-
+        
+        state_traj_bxtxd = state_traj
         [n_batch, n_time, n_states] = state_traj_bxtxd.shape
 
         # Ensure plot_start_time >= 0
