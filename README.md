@@ -90,13 +90,17 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
 ##### Figure 2. Fixed-point structure of an LSTM RNN trained to solve the flip-flop task. ``FixedPointFinder`` identified 8 stable fixed points (black points), each of which corresponds to a unique state of the 3-bit memory. ``FixedPointFinder`` also identified a number of unstable fixed points (red points) along with their unstable modes (red lines), which mediate the set of state transitions trained into the RNN's dynamics. Here, each unstable fixed point is a "saddle" in the RNN's dynamical flow field, and the corresponding unstable modes indicate the directions that nearby states are repelled from the fixed point. State trajectories from example trials (blue) traverse about these fixed points. All quantities are visualized in the 3-dimensional space determined by the top 3 principal components computed across 128 example trials.
 
-## General Usage, PyTorch version
+## General Usage
 
-Coming soon!
+1. Start by building, and if desired, training an RNN. ```FixedPointFinder``` works with Pytorch RNN objects (e.g., torch.nn.RNN, torch.nn.GRU) and Tensorflow `RNNCell` objects.
 
-## General Usage, TensorFlow version
+Advanced: More generally, ```FixedPointFinder``` will work on any Pytorch or Tensorflow function ```f``` that can be auto-differentiated and matches the input/output argument specifications: 
+```python 
+>>> _, h_n = f(input, h0)
+```
+where ```python  >>>input``` is a tensor with shape ```python  (n, n_inputs)``` and ```python  h0``` is a tensor with shape ```python  (n, n_states)```.
 
-1. Start by building, and if desired, training an RNN. ```FixedPointFinder``` works with any arbitrary RNN that conforms to Tensorflow's `RNNCell` API.
+
 2. Build a ```FixedPointFinder``` object:
     ```python
     >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **hyperparams)
