@@ -98,7 +98,7 @@ Advanced: More generally, ```FixedPointFinder``` will work on any Pytorch or Ten
 ```python 
 >>> _, h_n = f(input, h0)
 ```
-where ```python  >>>input``` is a tensor with shape ```python  (n, n_inputs)``` and ```python  h0``` is a tensor with shape ```python  (n, n_states)```.
+where ```input``` is a tensor with shape ```(n, n_inputs)``` and ```h0``` is a tensor with shape ```(n, n_states)```.
 
 
 2. Build a ```FixedPointFinder``` object:
