@@ -1,4 +1,5 @@
 checkpoint
+example/logs/*
 *ckpt*.index
 *ckpt*data*
 *ckpt*meta
