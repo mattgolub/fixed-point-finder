@@ -124,18 +124,8 @@ def main():
 	# Step 1: Train an RNN to solve the N-bit memory task
 	model, valid_predictions = train_FlipFlop()
 
-	for p in model.parameters():
-		name = p.name
-		sum_abs = np.sum(np.abs(p.detach().numpy()))
-		print('%s: %.5e' % (name, sum_abs))
-
 	# STEP 2: Find, analyze, and visualize the fixed points of the trained RNN
 	find_fixed_points(model, valid_predictions)
-
-	for p in model.parameters():
-		name = p.name
-		sum_abs = np.sum(np.abs(p.detach().numpy()))
-		print('%s: %.5e' % (name, sum_abs))
 
 	print('Entering debug mode to allow interaction with objects and figures.')
 	print('You should see a figure with:')
