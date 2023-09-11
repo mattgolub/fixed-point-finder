@@ -94,11 +94,11 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
 1. Start by building, and if desired, training an RNN. ```FixedPointFinder``` works with Pytorch RNN objects (e.g., torch.nn.RNN, torch.nn.GRU) and Tensorflow `RNNCell` objects.
 
-- Advanced: More generally, ```FixedPointFinder``` will work on any Pytorch or Tensorflow function ```f``` that can be auto-differentiated and matches the input/output argument specifications: 
-```python 
->>> _, h_n = f(input, h0)
-```
-where <code>input</code> is a tensor with shape <code>(n, n_inputs)</code> and <code>h0</code> is a tensor with shape <code>(n, n_states)</code>.
+    Advanced: More generally, ```FixedPointFinder``` will work on any Pytorch or Tensorflow function ```f``` that can be auto-differentiated and matches the input/output argument specifications: 
+    ```python 
+    >>> _, h_n = f(input, h0)
+    ```
+    where <code>input</code> is a tensor with shape <code>(n, n_inputs)</code> and <code>h0</code> is a tensor with shape <code>(n, n_states)</code>.
 
 
 2. Build a ```FixedPointFinder``` object:
