@@ -90,11 +90,11 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
 ##### Figure 2. Fixed-point structure of an LSTM RNN trained to solve the flip-flop task. ``FixedPointFinder`` identified 8 stable fixed points (black points), each of which corresponds to a unique state of the 3-bit memory. ``FixedPointFinder`` also identified a number of unstable fixed points (red points) along with their unstable modes (red lines), which mediate the set of state transitions trained into the RNN's dynamics. Here, each unstable fixed point is a "saddle" in the RNN's dynamical flow field, and the corresponding unstable modes indicate the directions that nearby states are repelled from the fixed point. State trajectories from example trials (blue) traverse about these fixed points. All quantities are visualized in the 3-dimensional space determined by the top 3 principal components computed across 128 example trials.
 
-## General Usage
+## General Usage (PyTorch & TensorFlow)
 
 1. Start by building, and if desired, training an RNN. `FixedPointFinder` works with Pytorch RNN objects (e.g., `torch.nn.RNN`, `torch.nn.GRU`) and Tensorflow `RNNCell` objects.
 
-    Advanced: More generally, `FixedPointFinder` will work on any Pytorch or Tensorflow function `f` that satisfies the following:
+    Advanced: More generally, `FixedPointFinder` will work on any Pytorch or TensorFlow function `f` that satisfies the following:
 
     - `f` must be auto-differentiatiable.
     - `f` must map inputs and previous states to updated states.
@@ -108,11 +108,15 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
         Internally, `f` should map `inputs[i]` and `h_prev[i]` to `h_next[i]`.
 
 
-2. Build a ```FixedPointFinder``` object:
-    ```python
-    >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **hyperparams)
-    ```
-    using `your_rnn_cell`, the `RNNCell` that specifies the single-timestep transitions in your RNN, `tf_session`, the Tensorflow session in which your model has been instantiated, and `hyperparams`, a python dict of optional hyperparameters for the fixed-point optimizations.
+2. Build a `FixedPointFinder` object:
+
+    (PyTorch)
+    `python >>> fpf = FixedPointFinder(your_rnn, **kwargs)`
+
+    (Tensorflow)
+    `python >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **kwargs)`
+    
+        Here, `your_rnn_cell` is the `RNNCell` that specifies the single-timestep transitions in your RNN, and `tf_session` is the Tensorflow session in which your model has been instantiated.
   
 3. Specify the `initial_states` from which you'd like to initialize the local optimizations implemented by ```FixedPointFinder```. These data should conform to shape and type expected by `your_rnn_cell`. For Tensorflow's `BasicRNNCell`, this would mean an `(n, n_states)` numpy array, where `n` is the number of initializations and `n_states` is the dimensionality of the RNN state (i.e., the number of hidden units). For Tensorflow's `LSTMCell`, `initial_states` should be an  `LSTMStateTuple` containing one `(n, nstates)` numpy array specifying the initializations of the hidden states and another `(n, nstates)` numpy array specifying the cell states.
 
@@ -132,9 +136,9 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
 ## Testing the Package
 
-``FixedPointFinder`` includes a test suite for confirming successful installation, and for ensuring that [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) have not introduced bugs into the main control flow. The tests run ``FixedPointFinder`` over a set of RNNs where ground truth fixed points have been previously identified, numerically confirmed, and saved for comparison.
+Tests are not currently functional due to package upgrades in 2022-2023. That said, the rest of the codebase should be fully usable, including the 3-bit flip flop examples. Stay tuned.
 
-Note: Tests are not currently functional due to package upgrades in 2022-2023. That said, the rest of the codebase should be fully usable, including the 3-bit flip flop examples. Stay tuned.
+Earlier versions of ``FixedPointFinder`` included a test suite for confirming successful installation, and for ensuring that [contributions](https://github.com/mattgolub/fixed-point-finder/blob/master/CONTRIBUTING.md) have not introduced bugs into the main control flow. The tests run ``FixedPointFinder`` over a set of RNNs where ground truth fixed points have been previously identified, numerically confirmed, and saved for comparison.
 
 To run the tests, descend into the test directory: `fixed-point-finder/test/` and execute:
 
