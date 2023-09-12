@@ -98,8 +98,7 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
     - `f` must be auto-differentiatiable.
     - `f` must map inputs and previous states to updated states.
-    - `f` must match the argument specifications:  
-        `python >>> _, h_next = f(input, h_prev)`
+    - `f` must match the argument specifications: `_, h_next = f(input, h_prev)`  
 
         `input`: a tensor with shape `(n, n_inputs)` containing `n` inputs of dimension `n_inputs`.  
         `h_prev`:  a tensor with shape `(n, n_states)` containing `n` previous states of dimension `n_states`.  
@@ -119,11 +118,15 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 4. Specify the `inputs` under which you'd like to study your RNN. Currently, To study the RNN given a set of static inputs, `inputs` should be a numpy array with shape `(1, n_inputs)` where `n_inputs` is an int specifying the depth of the inputs expected by `your_rnn_cell`. Alternatively, you can search for fixed points under different inputs by specifying a potentially different input for each initial states by making `inputs` a `(n, n_inputs)` numpy array.
 
 5. Run the local optimizations that find the fixed points:
-    `python >>> fps = fpf.find_fixed_points(initial_states, inputs)`  
+   ```python
+   >>> fps = fpf.find_fixed_points(initial_states, inputs)
+   ```
     The fixed points identified, the Jacobian of your RNN state transition function at those points, and some metadata corresponding to the optimizations will be returned in the `FixedPoints` object.`fps` (see [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) for more detail).
 
 6. Finally, visualize the identified fixed points:
-    `python >>> fps.plot()`  
+    ```python
+   >>> fps.plot()
+    ```  
     You can also visualize these fixed points amongst state trajectories from your RNN (see `plot` in [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) and the example in [run_FlipFlop_torch.py](https://github.com/mattgolub/fixed-point-finder/blob/master/examples/run_FlipFlop_torch.py) and [run_FlipFlop_tf.py](https://github.com/mattgolub/fixed-point-finder/blob/master/examples/run_FlipFlop_tf.py))
 
 ## Testing the Package
