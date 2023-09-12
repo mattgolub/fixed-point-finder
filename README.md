@@ -114,7 +114,7 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
     `python >>> fpf = FixedPointFinder(your_rnn, **kwargs)`
 
     (Tensorflow)
-    `python >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **kwargs)`
+    `python >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **kwargs)`  
     
         Here, `your_rnn_cell` is the `RNNCell` that specifies the single-timestep transitions in your RNN, and `tf_session` is the Tensorflow session in which your model has been instantiated.
   
