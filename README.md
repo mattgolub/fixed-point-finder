@@ -101,8 +101,8 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
     - `f` must match the argument specifications: 
         `python >>> _, h_next = f(input, h_prev`
 
-        `input` a tensor with shape `(n, n_inputs)` containing `n` inputs of dimension ```n_inputs```.
-        ```h_prev```:  a tensor with shape `(n, n_states)` containing `n` previous states of dimension `n_states`.
+        `input` :a tensor with shape `(n, n_inputs)` containing `n` inputs of dimension ```n_inputs```.  
+        ```h_prev```:  a tensor with shape `(n, n_states)` containing `n` previous states of dimension `n_states`.  
         ```h_next```: a tensor with shape `(n, n_states)` containing the `n` updated states.
 
         Internally, `f` should map `inputs[i]` and `h_prev[i]` to `h_next[i]`.
