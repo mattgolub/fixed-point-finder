@@ -115,17 +115,14 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
     (Tensorflow)
     `python >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **kwargs)`  
-    
-        Here, `your_rnn_cell` is the `RNNCell` that specifies the single-timestep transitions in your RNN, and `tf_session` is the Tensorflow session in which your model has been instantiated.
+    Here, `your_rnn_cell` is the `RNNCell` that specifies the single-timestep transitions in your RNN, and `tf_session` is the Tensorflow session in which your model has been instantiated.
   
 3. Specify the `initial_states` from which you'd like to initialize the local optimizations implemented by ```FixedPointFinder```. These data should conform to shape and type expected by `your_rnn_cell`. For Tensorflow's `BasicRNNCell`, this would mean an `(n, n_states)` numpy array, where `n` is the number of initializations and `n_states` is the dimensionality of the RNN state (i.e., the number of hidden units). For Tensorflow's `LSTMCell`, `initial_states` should be an  `LSTMStateTuple` containing one `(n, nstates)` numpy array specifying the initializations of the hidden states and another `(n, nstates)` numpy array specifying the cell states.
 
 4. Specify the `inputs` under which you'd like to study your RNN. Currently, To study the RNN given a set of static inputs, `inputs` should be a numpy array with shape `(1, n_inputs)` where `n_inputs` is an int specifying the depth of the inputs expected by `your_rnn_cell`. Alternatively, you can search for fixed points under different inputs by specifying a potentially different input for each initial states by making `inputs` a `(n, n_inputs)` numpy array.
 
 5. Run the local optimizations that find the fixed points:
-    ```python
-    >>> fps = fpf.find_fixed_points(initial_states, inputs)
-    ```
+    `python >>> fps = fpf.find_fixed_points(initial_states, inputs)`  
     The fixed points identified, the Jacobian of your RNN state transition function at those points, and some metadata corresponding to the optimizations will be returned in the `FixedPoints` object.`fps` (see [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) for more detail).
 
 6. Finally, visualize the identified fixed points:
