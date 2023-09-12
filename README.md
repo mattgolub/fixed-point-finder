@@ -129,9 +129,7 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
     The fixed points identified, the Jacobian of your RNN state transition function at those points, and some metadata corresponding to the optimizations will be returned in the `FixedPoints` object.`fps` (see [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) for more detail).
 
 6. Finally, visualize the identified fixed points:
-    ```python
-    >>> fps.plot()
-    ```
+    `python >>> fps.plot()`  
     You can also visualize these fixed points amongst state trajectories from your RNN (see `plot` in [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) and the example in [run_FlipFlop_torch.py](https://github.com/mattgolub/fixed-point-finder/blob/master/examples/run_FlipFlop_torch.py) and [run_FlipFlop_tf.py](https://github.com/mattgolub/fixed-point-finder/blob/master/examples/run_FlipFlop_tf.py))
 
 ## Testing the Package
