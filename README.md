@@ -92,21 +92,20 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
 ## General Usage
 
-1. Start by building, and if desired, training an RNN. ```FixedPointFinder``` works with Pytorch RNN objects (e.g., torch.nn.RNN, torch.nn.GRU) and Tensorflow `RNNCell` objects.
+1. Start by building, and if desired, training an RNN. `FixedPointFinder` works with Pytorch RNN objects (e.g., `torch.nn.RNN`, `torch.nn.GRU`) and Tensorflow `RNNCell` objects.
 
-    Advanced: More generally, ```FixedPointFinder``` will work on any Pytorch or Tensorflow function ```f``` that satisfies the following:
+    Advanced: More generally, `FixedPointFinder` will work on any Pytorch or Tensorflow function `f` that satisfies the following:
 
-    - ```f``` must be auto-differentiatiable.
-    - ```f``` must map inputs and previous states to updated states.
-    - ```f``` must matche the argument specifications: 
-        ```python 
-        >>> _, h_next = f(input, h_prev)
-        ```
-            ```input```: a tensor with shape ```(n, n_inputs)``` containing ```n``` inputs of dimension ```n_inputs```.
-            ```h_prev```:  a tensor with shape ```(n, n_states)``` containing ```n``` previous states of dimension ```n_states```.
-            ```h_next```: a tensor with shape ```(n, n_states)``` containing the ```n``` updated states.
+    - `f` must be auto-differentiatiable.
+    - `f` must map inputs and previous states to updated states.
+    - `f` must match the argument specifications: 
+        `python >>> _, h_next = f(input, h_prev`
 
-            Internally, ```f``` should map ```inputs[i]``` and ```h_prev[i]``` to ```h_next[i]```.
+        `input` a tensor with shape `(n, n_inputs)` containing `n` inputs of dimension ```n_inputs```.
+        ```h_prev```:  a tensor with shape `(n, n_states)` containing `n` previous states of dimension `n_states`.
+        ```h_next```: a tensor with shape `(n, n_states)` containing the `n` updated states.
+
+        Internally, `f` should map `inputs[i]` and `h_prev[i]` to `h_next[i]`.
 
 
 2. Build a ```FixedPointFinder``` object:
