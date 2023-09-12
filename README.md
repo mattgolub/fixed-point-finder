@@ -98,7 +98,7 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
     - `f` must be auto-differentiatiable.
     - `f` must map inputs and previous states to updated states.
-    - `f` must match the argument specifications: 
+    - `f` must match the argument specifications:  
         `python >>> _, h_next = f(input, h_prev)`
 
         `input`: a tensor with shape `(n, n_inputs)` containing `n` inputs of dimension `n_inputs`.  
@@ -110,8 +110,8 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
 
 2. Build a `FixedPointFinder` object:
 
-    - PyTorch: `python >>> fpf = FixedPointFinder(your_rnn, **kwargs)`
-    - Tensorflow: `python >>> fpf = FixedPointFinder(your_rnn_cell, tf_session, **kwargs)`
+    - PyTorch: `fpf = FixedPointFinder(your_rnn, **kwargs)`
+    - Tensorflow: `fpf = FixedPointFinder(your_rnn_cell, tf_session, **kwargs)`
         - Here, `your_rnn_cell` is the `RNNCell` that specifies the single-timestep transitions in your RNN, and `tf_session` is the Tensorflow session in which your model has been instantiated.
   
 3. Specify the `initial_states` from which you'd like to initialize the local optimizations implemented by ```FixedPointFinder```. These data should conform to shape and type expected by `your_rnn_cell`. For Tensorflow's `BasicRNNCell`, this would mean an `(n, n_states)` numpy array, where `n` is the number of initializations and `n_states` is the dimensionality of the RNN state (i.e., the number of hidden units). For Tensorflow's `LSTMCell`, `initial_states` should be an  `LSTMStateTuple` containing one `(n, nstates)` numpy array specifying the initializations of the hidden states and another `(n, nstates)` numpy array specifying the cell states.
