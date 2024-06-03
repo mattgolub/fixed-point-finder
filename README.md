@@ -32,6 +32,8 @@ Golub and Sussillo (2018), "FixedPointFinder: A TensorFlow toolbox for identifyi
     $ pip install -r requirements-torch.txt
     ```
 
+    and, depending on if you would like to use the CPU or GPU, follow the install instructions on the [official pytorch installer](https://pytorch.org/get-started/locally/)
+
     For TensorFlow, use:
 
     ```bash
@@ -47,8 +49,8 @@ Advanced Python users and those wishing to develop [contributions](https://githu
 2. Install [compatible versions](https://github.com/mattgolub/fixed-point-finder/blob/master/requirements-cpu.txt) of the following prerequisites.
 
 * **NumPy, SciPy, Matplotlib** ([install SciPy stack](https://www.scipy.org/install.html), contains all of them).
-* **Scikit-learn** ([install](http://scikit-learn.org/)).
 
+* **Scikit-learn** ([install](http://scikit-learn.org/)).
 
 * **TensorFlow** (recommended version: 2.8; requires at least version 1.14; versions beyond 2.8 are not currently supported) ([install](https://www.tensorflow.org/install/)).
 
