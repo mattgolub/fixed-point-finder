@@ -7,7 +7,6 @@ Please direct correspondence to mgolub@cs.washington.edu
 '''
 
 import numpy as np
-import pdb
 
 from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
@@ -201,18 +200,24 @@ def plot_fixed_point(ax, fp, pca,
 			''' Ideally, never wind up here. Eigen decomposition is much faster in batch mode.'''
 			print('Decomposing Jacobians, one fixed point at time.')
 			print('\t warning: THIS CAN BE VERY SLOW.')
-			fp.decompose_Jacobians()
+			fp.decompose_jacobians()
 
 		e_vals = fp.eigval_J_xstar[0]
 		e_vecs = fp.eigvec_J_xstar[0]
 
-		sorted_e_val_idx = np.argsort(np.abs(e_vals))
+		# NaN entries (from a partial decomposition, n_leading_eigs) sort
+		# below every computed eigenvalue.
+		e_val_mags = np.abs(e_vals)
+		e_val_mags[np.isnan(e_val_mags)] = -np.inf
+		sorted_e_val_idx = np.argsort(e_val_mags)
+		max_n_modes = min(max_n_modes, int(np.sum(np.isfinite(e_val_mags))))
 
 		if max_n_modes > n_states:
 			max_n_modes = n_states
 
-		# Determine stability of fixed points
-		is_stable = np.all(np.abs(e_vals) < 1.0)
+		# Determine stability of fixed points (from the leading eigenvalue,
+		# which is always computed).
+		is_stable = np.nanmax(np.abs(e_vals)) < 1.0
 
 		if is_stable:
 			color = stable_color

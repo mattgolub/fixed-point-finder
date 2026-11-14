@@ -16,7 +16,6 @@ https://doi.org/10.21105/joss.01003
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
-import pdb
 import numpy as np
 import pickle
 
@@ -524,15 +523,20 @@ class FixedPoints(object):
         self.n = self.n + new_fps.n
         self.assert_valid_shapes()
 
-    def decompose_jacobians(self, do_batch=True, str_prefix=''):
+    def decompose_jacobians(self, do_batch=True, str_prefix='',
+                            n_leading_eigs=None):
         '''Adds the following fields to the FixedPoints object:
 
         eigval_J_xstar: [n x n_states] numpy array with eigval_J_xstar[i, :]
-        containing the eigenvalues of J_xstar[i, :, :].
+        containing the eigenvalues of J_xstar[i, :, :], sorted by decreasing
+        magnitude.
 
         eigvec_J_xstar: [n x n_states x n_states] numpy array containing with
         eigvec_J_xstar[i, :, :] containing the eigenvectors of
-        J_xstar[i, :, :].
+        J_xstar[i, :, :] (as columns, in the same order).
+
+        is_stable: [n,] bool numpy array, True where the leading eigenvalue
+        has magnitude < 1.
 
         Args:
             do_batch (optional): bool indicating whether to perform a batch
@@ -543,17 +547,43 @@ class FixedPoints(object):
 
             str_prefix (optional): String to be pre-pended to print statements.
 
+            n_leading_eigs (optional): None, or a positive int k. If None, the
+            full eigendecomposition is computed (np.linalg.eig). If k, only
+            the k largest-magnitude eigenvalues and their eigenvectors are
+            computed (scipy.sparse.linalg.eigs, which='LM', from a fixed
+            starting vector so results are reproducible), which is much
+            faster for high-dimensional states; the remaining entries of
+            eigval_J_xstar and eigvec_J_xstar are NaN, and is_stable is
+            unchanged (it depends only on the leading eigenvalue). Falls back
+            to the full decomposition when k >= n_states - 1, for any
+            Jacobian on which ARPACK fails, and for any Jacobian whose leading
+            eigenvalue is within rounding (1000 * eps) of the unit circle, so
+            that is_stable matches the full decomposition. Default: None.
+
         Returns:
             None.
         '''
 
-        if self.has_decomposed_jacobians:
+        # Objects allocated with do_alloc_nan=True (e.g., by sequential
+        # optimization) hold all-NaN eigen data: not yet decomposed.
+        if self.has_decomposed_jacobians and \
+            not np.all(np.isnan(self.eigval_J_xstar)):
             print('%sJacobians have already been decomposed, '
                 'not repeating.' % str_prefix)
             return
 
         n = self.n # number of FPs represented in this object
         n_states = self.n_states # dimensionality of each state
+
+        if n_leading_eigs is not None:
+            k = int(n_leading_eigs)
+            if k < 1:
+                raise ValueError('n_leading_eigs must be None or a positive '
+                                 'int, but was %s.' % str(n_leading_eigs))
+            if k < n_states - 1:
+                self._decompose_jacobians_leading(k, str_prefix=str_prefix)
+                return
+            # scipy's eigs requires k < n_states - 1: use the full path.
 
         if do_batch:
             # Batch eigendecomposition
@@ -571,7 +601,7 @@ class FixedPoints(object):
                 e_vals_unsrt = self._alloc_nan(
                     (n, n_states), dtype=self.dtype_complex)
                 e_vecs_unsrt = self._alloc_nan(
-                    (n, n_states, n_states), dtype=dtype_complex)
+                    (n, n_states, n_states), dtype=self.dtype_complex)
 
                 e_vals_unsrt[valid_J_idx], e_vecs_unsrt[valid_J_idx] = \
                     np.linalg.eig(self.J_xstar[valid_J_idx])
@@ -617,6 +647,69 @@ class FixedPoints(object):
 
             # For stability, need only to look at the leading eigenvalue
             self.is_stable[k] = np.abs(e_vals_k[0]) < 1.0
+
+        self.assert_valid_shapes()
+
+    def _decompose_jacobians_leading(self, k, str_prefix=''):
+        '''Partial eigendecomposition: the k largest-magnitude eigenvalues and
+        eigenvectors of each Jacobian, stored in the leading k entries of
+        eigval_J_xstar / eigvec_J_xstar (sorted by decreasing magnitude), with
+        NaN elsewhere. See decompose_jacobians(n_leading_eigs=k).
+        '''
+        from scipy.sparse.linalg import eigs, ArpackError, \
+            ArpackNoConvergence
+
+        n = self.n
+        n_states = self.n_states
+
+        print('%sDecomposing Jacobians: %d leading eigenvalue(s) each.' %
+              (str_prefix, k))
+
+        self.eigval_J_xstar = \
+            self._alloc_nan((n, n_states), dtype=self.dtype_complex)
+        self.eigvec_J_xstar = \
+            self._alloc_nan((n, n_states, n_states), dtype=self.dtype_complex)
+        self.is_stable = np.zeros(n, dtype=bool)
+
+        # Fixed ARPACK starting vector, so results are reproducible.
+        v0 = np.ones(n_states) / np.sqrt(n_states)
+        n_fallback = 0
+        n_marginal = 0
+
+        for i in range(n):
+            J = self.J_xstar[i]
+
+            if np.any(np.isnan(J)):
+                # Leave NaNs; is_stable stays False, as in the full path.
+                continue
+
+            try:
+                e_vals, e_vecs = eigs(J, k=k, which='LM',
+                                      v0=v0.astype(J.dtype))
+            except (ArpackError, ArpackNoConvergence):
+                n_fallback += 1
+                e_vals, e_vecs = np.linalg.eig(J)
+            else:
+                # ARPACK and LAPACK can differ at the last few bits. Where the
+                # leading eigenvalue is within rounding of the unit circle,
+                # use the full decomposition so that is_stable matches it.
+                tol = 1e3 * np.finfo(J.dtype).eps
+                if np.abs(np.max(np.abs(e_vals)) - 1.0) < tol:
+                    n_marginal += 1
+                    e_vals, e_vecs = np.linalg.eig(J)
+
+            sort_idx = np.argsort(np.abs(e_vals))[::-1][:k]
+            self.eigval_J_xstar[i, :k] = e_vals[sort_idx]
+            self.eigvec_J_xstar[i, :, :k] = e_vecs[:, sort_idx]
+            self.is_stable[i] = np.abs(e_vals[sort_idx[0]]) < 1.0
+
+        if n_fallback > 0:
+            print('%sARPACK failed on %d Jacobian(s); used the full '
+                  'eigendecomposition for those.' % (str_prefix, n_fallback))
+        if n_marginal > 0:
+            print('%sLeading eigenvalue within rounding of |1| for %d '
+                  'Jacobian(s); used the full eigendecomposition for those.'
+                  % (str_prefix, n_marginal))
 
         self.assert_valid_shapes()
 

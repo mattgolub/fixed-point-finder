@@ -15,11 +15,8 @@ https://doi.org/10.21105/joss.01003
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
-import pdb
-
 import numpy as np
 import time
-from copy import deepcopy
 
 import torch
 from torch.autograd.functional import jacobian
@@ -31,7 +28,7 @@ class FixedPointFinderTorch(FixedPointFinderBase):
 
     def __init__(self, rnn, 
         lr_init=1.0,
-        lr_patience=5,
+        lr_patience=2,
         lr_factor=0.95,
         lr_cooldown=0,
         **kwargs):
@@ -39,13 +36,13 @@ class FixedPointFinderTorch(FixedPointFinderBase):
 
         Args:
             rnn: A Pytorch RNN object. The following are supported: nn.RNN, nn.GRU,
-            or any wrapper class that matches the input/output argument 
-            specifications of output, h_n = nn.RNN(input, h0). 
-            
+            or any wrapper class that matches the input/output argument
+            specifications of output, h_n = nn.RNN(input, h0).
+
             lr_init: Scalar, initial learning rate. Default: 1.0.
 
             lr_patience: The 'patience' arg provided to ReduceLROnPlateau().
-            Default: 5.
+            Default: 2.
 
             lr_factor: The 'factor' arg provided to ReduceLROnPlateau().
             Default: 0.95.
@@ -90,105 +87,110 @@ class FixedPointFinderTorch(FixedPointFinderBase):
         TIME_DIM = self._time_dim
 
         # Ensure that fixed point optimization does not alter RNN parameters.
-        print('\tFreezing model parameters so model is not affected by fixed point optimization.')
-        for p in self.rnn.parameters():
+        # The original requires_grad flags are restored afterwards (finally).
+        self._print_if_verbose('\tFreezing model parameters so model is not '
+                               'affected by fixed point optimization.')
+        params = list(self.rnn.parameters())
+        requires_grad_orig = [p.requires_grad for p in params]
+        for p in params:
             p.requires_grad = False
 
-        self._print_if_verbose('\tFinding fixed points via joint optimization.')
+        try:
+            self._print_if_verbose(
+                '\tFinding fixed points via joint optimization.')
 
-        # Unsqueeze to build in time dimension (a single timestep)
-        inputs_bx1xd = torch.from_numpy(inputs).unsqueeze(TIME_DIM)
-        inputs_bx1xd = inputs_bx1xd.to(self.torch_dtype)
-        inputs_bx1xd = inputs_bx1xd.to(self.device)
+            # Unsqueeze to build in time dimension (a single timestep)
+            inputs_bx1xd = torch.from_numpy(inputs).unsqueeze(TIME_DIM)
+            inputs_bx1xd = inputs_bx1xd.to(self.torch_dtype)
+            inputs_bx1xd = inputs_bx1xd.to(self.device)
 
-        # Unsqueeze to promote appropriate broadcasting
-        x_1xbxd = torch.from_numpy(initial_states).unsqueeze(0)
-        x_1xbxd = x_1xbxd.to(self.torch_dtype)
-        x_1xbxd = x_1xbxd.to(self.device)
+            # Unsqueeze to promote appropriate broadcasting
+            x_1xbxd = torch.from_numpy(initial_states).unsqueeze(0)
+            x_1xbxd = x_1xbxd.to(self.torch_dtype)
+            x_1xbxd = x_1xbxd.to(self.device)
 
-        inputs_bx1xd.requires_grad = False
-        x_1xbxd.requires_grad = True
+            inputs_bx1xd.requires_grad = False
+            x_1xbxd.requires_grad = True
 
-        init_lr = 0.05
-        optimizer = torch.optim.Adam([x_1xbxd], lr=self.lr_init)
+            optimizer = torch.optim.Adam([x_1xbxd], lr=self.lr_init)
 
-        # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, 
-        #     step_size=500, 
-        #     gamma=0.7)
+            # ReduceLROnPlateau is the closest analog of the TF version's
+            # AdaptiveLearningRate.
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode='min',
+                factor=self.lr_factor,
+                patience=self.lr_patience,
+                cooldown=self.lr_cooldown)
 
-        # Ideally would use ReduceLROnPlateau, as that is closest to 
-        # AdaptiveLearningRate, but RLROP doesn't give ready external access
-        # to the current LR, so it's difficult to monitor.
-        # 
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, 
-            mode='min',
-            factor=.95,
-            patience=2,
-            cooldown=0)
+            iter_count = 1
+            t_start = time.time()
+            q_prev_b = torch.full((n_batch,), float('nan'), device=self.device)
 
-        iter_count = 1
-        iter_learning_rate = init_lr
-        t_start = time.time()
-        q_prev_b = torch.full((n_batch,), float('nan'), device=self.device)
+            while True:
 
-        while True:
-            
-            F_x_bx1xd, F_x_1xbxd = self.rnn(inputs_bx1xd, x_1xbxd)
+                F_x_bx1xd, F_x_1xbxd = self.rnn(inputs_bx1xd, x_1xbxd)
 
-            dx_bxd = torch.squeeze(x_1xbxd - F_x_1xbxd)
-            q_b = 0.5 * torch.sum(torch.square(dx_bxd), axis=1)
-            q_scalar = torch.mean(q_b)
-            dq_b = torch.abs(q_b - q_prev_b)
-            
-            optimizer.zero_grad()
-            q_scalar.backward()
-            
-            optimizer.step()
-            scheduler.step(metrics=q_scalar)
+                # Squeeze only the leading (layer) dim, so that a batch of
+                # one or a 1-D state keeps its [n_batch x n_states] shape.
+                dx_bxd = (x_1xbxd - F_x_1xbxd).squeeze(0)
+                q_b = 0.5 * torch.sum(torch.square(dx_bxd), axis=1)
+                q_scalar = torch.mean(q_b)
+                dq_b = torch.abs(q_b - q_prev_b)
 
-            iter_learning_rate = scheduler.state_dict()['_last_lr'][0]
+                # Keep x, F(x) and q evaluated at the same x: the step below
+                # moves x, so the state returned on termination is this one.
+                x_eval_bxd = x_1xbxd.detach().squeeze(0).clone()
+                F_eval_bxd = F_x_1xbxd.detach().squeeze(0)
 
-            ev_q_scalar = q_scalar.detach().cpu().numpy()
-            ev_q_b = q_b.detach().cpu().numpy()
-            ev_dq_b = dq_b.detach().cpu().numpy()
+                optimizer.zero_grad()
+                q_scalar.backward()
 
-            if self.super_verbose and \
-                np.mod(iter_count, self.n_iters_per_print_update)==0:
-                self._print_iter_update(
-                    iter_count, t_start, ev_q_b, ev_dq_b, iter_learning_rate)
+                optimizer.step()
+                scheduler.step(metrics=q_scalar.item())
 
-            if iter_count > 1 and \
-                np.all(np.logical_or(
-                    ev_dq_b < self.tol_dq*iter_learning_rate,
-                    ev_q_b < self.tol_q)):
-                '''Here dq is scaled by the learning rate. Otherwise very
-                small steps due to very small learning rates would spuriously
-                indicate convergence. This scaling is roughly equivalent to
-                measuring the gradient norm.'''
-                self._print_if_verbose('\tOptimization complete '
-                                       'to desired tolerance.')
-                break
+                iter_learning_rate = scheduler.state_dict()['_last_lr'][0]
 
-            if iter_count + 1 > self.max_iters:
-                self._print_if_verbose('\tMaximum iteration count reached. '
-                                       'Terminating.')
-                break
+                ev_q_b = q_b.detach().cpu().numpy()
+                ev_dq_b = dq_b.detach().cpu().numpy()
 
-            q_prev_b = q_b
-            iter_count += 1
+                if self.super_verbose and \
+                    np.mod(iter_count, self.n_iters_per_print_update)==0:
+                    self._print_iter_update(
+                        iter_count, t_start, ev_q_b, ev_dq_b,
+                        iter_learning_rate)
+
+                if iter_count > 1 and \
+                    np.all(np.logical_or(
+                        ev_dq_b < self.tol_dq*iter_learning_rate,
+                        ev_q_b < self.tol_q)):
+                    '''Here dq is scaled by the learning rate. Otherwise very
+                    small steps due to very small learning rates would
+                    spuriously indicate convergence. This scaling is roughly
+                    equivalent to measuring the gradient norm.'''
+                    self._print_if_verbose('\tOptimization complete '
+                                           'to desired tolerance.')
+                    break
+
+                if iter_count + 1 > self.max_iters:
+                    self._print_if_verbose('\tMaximum iteration count '
+                                           'reached. Terminating.')
+                    break
+
+                q_prev_b = q_b
+                iter_count += 1
+
+        finally:
+            for p, flag in zip(params, requires_grad_orig):
+                p.requires_grad = flag
 
         if self.verbose:
             self._print_iter_update(
-                iter_count, t_start, ev_q_b, ev_dq_b, iter_learning_rate, 
+                iter_count, t_start, ev_q_b, ev_dq_b, iter_learning_rate,
                 is_final=True)
 
-        # remove extra dims
-        xstar = x_1xbxd.squeeze(0)
-        xstar = xstar.detach().cpu().numpy()
-        
-        F_xstar = F_x_1xbxd.squeeze(0)
-        F_xstar = F_xstar.detach().cpu().numpy()
+        xstar = x_eval_bxd.cpu().numpy()
+        F_xstar = F_eval_bxd.cpu().numpy()
 
         # Indicate same n_iters for each initialization (i.e., joint optimization)        
         n_iters = np.tile(iter_count, reps=F_xstar.shape[0])
@@ -223,7 +225,8 @@ class FixedPointFinderTorch(FixedPointFinderBase):
             associated metadata.
         '''
         
-        return self._run_joint_optimization(initial_state, inputs, cond_id=None)
+        return self._run_joint_optimization(
+            initial_state, inputs, cond_ids=cond_id)
 
     def _compute_recurrent_jacobians(self, fps):
         '''Computes the Jacobian of the RNN state transition function at the
@@ -372,9 +375,9 @@ class FixedPointFinderTorch(FixedPointFinderBase):
 
         J_bxdxd = efficient_jacobian(x_bxd, inputs_bxd)
 
-
+        # Alternatives, kept for testing (see efficient_jacobian):
         # J_bxbxdxd = excessive_jacobian(x_bxd, inputs_bxd)
-        J_list = sequential_jacobian(x_bxd, inputs_bxd)
+        # J_list = sequential_jacobian(x_bxd, inputs_bxd)
 
         J_np = J_bxdxd.detach().cpu().numpy()
 

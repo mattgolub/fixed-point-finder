@@ -5,7 +5,6 @@ Written for Python 3.8.17 and Pytorch 2.0.1
 Please direct correspondence to mgolub@cs.washington.edu
 '''
 
-import pdb
 import sys
 import numpy as np
 import torch

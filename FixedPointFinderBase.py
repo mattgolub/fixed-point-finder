@@ -35,6 +35,7 @@ class FixedPointFinderBase(object):
         'max_n_unique': np.inf,
         'do_compute_jacobians': True,
         'do_decompose_jacobians': True,
+        'n_leading_eigs': None,
         'dtype': 'float32',
         'random_seed': 0,
         'verbose': True,
@@ -74,6 +75,7 @@ class FixedPointFinderBase(object):
         max_n_unique=_default_hps['max_n_unique'],
         do_compute_jacobians=_default_hps['do_compute_jacobians'],
         do_decompose_jacobians=_default_hps['do_decompose_jacobians'],
+        n_leading_eigs=_default_hps['n_leading_eigs'],
         dtype=_default_hps['dtype'],
         random_seed=_default_hps['random_seed'],
         verbose=_default_hps['verbose'],
@@ -135,8 +137,9 @@ class FixedPointFinderBase(object):
 
             tol_unique (optional): A positive scalar specifying the numerical
             precision required to label two fixed points as being unique from
-            one another. Two fixed points will be considered unique if they
-            differ by this amount (or more) along any dimension. This
+            one another. Two fixed points are considered unique if the 2-norm
+            of the difference between their concatenated (xstar, inputs) is
+            greater than this tolerance (see FixedPoints.find). This
             tolerance is used to discard numerically similar fixed points.
             Default: 1e-3.
 
@@ -149,7 +152,18 @@ class FixedPointFinderBase(object):
             to compute the Jacobian at each fixed point. Default: True.
 
             do_decompose_jacobians (optional): A bool specifying whether or not
-            to eigen-decompose each fixed point's Jacobian. Default: True.
+            to eigen-decompose each fixed point's Jacobian. Only used if
+            do_compute_jacobians is True. Default: True.
+
+            n_leading_eigs (optional): None, or a positive int k limiting the
+            eigendecomposition to the k largest-magnitude eigenvalues (and
+            eigenvectors) of each Jacobian, computed with
+            scipy.sparse.linalg.eigs. This is much faster for
+            high-dimensional states. Stability (is_stable) depends only on
+            the leading eigenvalue, so k=1 suffices for it. The other entries
+            of eigval_J_xstar / eigvec_J_xstar are NaN. If None, the full
+            decomposition is computed. See FixedPoints.decompose_jacobians.
+            Default: None.
 
             dtype: string indicating the data type to use for all numerical ops
             and objects. Default: 'float32'
@@ -191,6 +205,7 @@ class FixedPointFinderBase(object):
         self.max_n_unique = max_n_unique
         self.do_compute_jacobians = do_compute_jacobians
         self.do_decompose_jacobians = do_decompose_jacobians
+        self.n_leading_eigs = n_leading_eigs
         self.verbose = verbose
         self.super_verbose = super_verbose
         self.n_iters_per_print_update = n_iters_per_print_update
@@ -236,6 +251,8 @@ class FixedPointFinderBase(object):
         Raises:
             ValueError if noise_scale is negative.
         '''
+        state_traj_bxtxd = state_traj
+
         [n_batch, n_time, n_states] = state_traj_bxtxd.shape
         n_inputs = inputs.shape[2]
 
@@ -333,10 +350,10 @@ class FixedPointFinderBase(object):
         Returns:
             unique_fps: A FixedPoints object containing the set of unique
             fixed points after optimizing from all initial_states. Two fixed
-            points are considered unique if all absolute element-wise
-            differences are less than tol_unique AND the corresponding inputs
-            are unique following the same criteria. See FixedPoints.py for
-            additional detail.
+            points are considered duplicates if the 2-norm of the difference
+            between their concatenated (xstar, inputs) is at most tol_unique;
+            among duplicates, the one with the smallest q is kept. See
+            FixedPoints.py for additional detail.
 
             all_fps: A FixedPoints object containing the likely redundant set
             of fixed points (and associated metadata) resulting from ALL
@@ -422,7 +439,8 @@ class FixedPointFinderBase(object):
             
             if self.do_decompose_jacobians:
                 # self._test_decompose_jacobians(unique_fps, J_np, J_tf)
-                unique_fps.decompose_jacobians(str_prefix='\t')
+                unique_fps.decompose_jacobians(
+                    str_prefix='\t', n_leading_eigs=self.n_leading_eigs)
 
         self._print_if_verbose('\tFixed point finding complete.\n')
 
@@ -550,12 +568,12 @@ class FixedPointFinderBase(object):
         for init_idx in range(n_inits):
 
             initial_states_i = initial_states[init_idx:(init_idx+1)]
-            inputs_i = inputs[index]
+            inputs_i = inputs[init_idx:(init_idx+1)]
 
             if cond_ids is None:
                 colors_i = None
             else:
-                colors_i = cond_ids[index]
+                colors_i = cond_ids[init_idx:(init_idx+1)]
 
             if is_fresh_start:
                 self._print_if_verbose('\n\tInitialization %d of %d:' %

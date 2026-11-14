@@ -123,6 +123,16 @@ The task is the "flip-flop" task previously described in Sussillo and Barak (201
    ```
     The fixed points identified, the Jacobian of your RNN state transition function at those points, and some metadata corresponding to the optimizations will be returned in the `FixedPoints` object.`fps` (see [FixedPoints.py](https://github.com/mattgolub/fixed-point-finder/blob/master/FixedPoints.py) for more detail).
 
+    For high-dimensional RNNs, the eigendecomposition of each fixed point's Jacobian can dominate the run time. Three hyperparameters control it:
+    - `do_compute_jacobians=False` skips the Jacobians (and therefore the eigendecomposition).
+    - `do_decompose_jacobians=False` computes the Jacobians but does not decompose them.
+    - `n_leading_eigs=k` computes only the `k` largest-magnitude eigenvalues and eigenvectors of each Jacobian (`scipy.sparse.linalg.eigs`); the remaining entries of `eigval_J_xstar` / `eigvec_J_xstar` are NaN. Stability (`is_stable`) depends only on the leading eigenvalue, so `n_leading_eigs=1` is enough for it. The default, `None`, computes the full decomposition.
+
+    To decompose only some fixed points, decompose a subset yourself, e.g. `fps_low_q = fps[np.argsort(fps.qstar)[:N]]` then `fps_low_q.decompose_jacobians(n_leading_eigs=k)`, after running with `do_decompose_jacobians=False`.
+
+    PyTorch only: `lr_init`, `lr_factor`, `lr_patience` and `lr_cooldown` set the Adam learning rate and its `ReduceLROnPlateau` schedule for the fixed point optimization.
+    If the optimization stops "to tolerance" with q still large, the learning rate may have decayed too far: with the default `lr_init=1.0` the schedule can shrink it by orders of magnitude within a few hundred iterations on some networks. A smaller `lr_init` (e.g., 0.01) can reach much lower q.
+
 6. Finally, visualize the identified fixed points:
     ```python
    >>> fps.plot()
